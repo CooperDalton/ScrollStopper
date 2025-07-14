@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from "next/image";
+import Link from 'next/link';
 
 // Icon Components
 const PlayIcon = () => (
@@ -53,13 +54,13 @@ const HeroSection = () => (
         </h1>
         
         <p className="text-xl md:text-2xl text-[var(--color-text-muted)] max-w-3xl mx-auto mb-12 leading-relaxed">
-          Upload your product screenshots and let Cliploft generate scroll-stopping TikToks in seconds.
+          Upload your product screenshots and let ScrollStopper generate scroll-stopping TikToks in seconds.
         </p>
         
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <button className="bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:scale-105 animate-glow">
+          <Link href="/products" className="bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:scale-105 animate-glow">
             Start Free
-          </button>
+          </Link>
           <button className="flex items-center gap-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text)] px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:bg-[var(--color-bg-tertiary)]">
             <PlayIcon />
             Watch Demo
@@ -221,7 +222,7 @@ const TestimonialsSection = () => (
       <div className="grid md:grid-cols-3 gap-8">
         {[
           {
-            quote: "Cliploft turned my boring SaaS screenshots into viral TikToks. 2M views in the first week!",
+            quote: "ScrollStopper turned my boring SaaS screenshots into viral TikToks. 2M views in the first week!",
             author: "Sarah Chen",
             role: "Indie Hacker",
             avatar: "👩‍💻"
@@ -284,7 +285,7 @@ const PricingSection = () => (
               "Manual video editor",
               "Basic templates",
               "720p exports",
-              "Cliploft watermark"
+              "ScrollStopper watermark"
             ].map((feature, index) => (
               <li key={index} className="flex items-center gap-3">
                 <CheckIcon />
@@ -345,7 +346,7 @@ const FooterSection = () => (
         <div className="md:col-span-2">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 bg-gradient-primary rounded-lg"></div>
-            <span className="text-xl font-bold text-[var(--color-text)]">Cliploft</span>
+            <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
           </div>
           <p className="text-[var(--color-text-muted)] mb-6 max-w-md">
             AI-powered video generation for founders and marketers who want to create scroll-stopping content.
@@ -392,7 +393,7 @@ const FooterSection = () => (
       
       <div className="border-t border-[var(--color-border)] mt-12 pt-8 text-center">
         <p className="text-[var(--color-text-muted)]">
-          © 2024 Cliploft. All rights reserved.
+          © 2024 ScrollStopper. All rights reserved.
         </p>
       </div>
     </div>

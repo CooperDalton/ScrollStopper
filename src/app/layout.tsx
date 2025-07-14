@@ -14,11 +14,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cliploft - AI that thinks like a content strategist",
-  description: "Upload your product screenshots and let Cliploft generate scroll-stopping TikToks in seconds. AI-powered video generation for founders and marketers.",
+  title: "ScrollStopper - AI that thinks like a content strategist",
+  description: "Upload your product screenshots and let ScrollStopper generate scroll-stopping TikToks in seconds. AI-powered video generation for founders and marketers.",
   keywords: ["AI video generation", "TikTok", "Instagram", "content marketing", "social media", "automation"],
-  authors: [{ name: "Cliploft" }],
-  viewport: "width=device-width, initial-scale=1",
+  authors: [{ name: "ScrollStopper" }],
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
