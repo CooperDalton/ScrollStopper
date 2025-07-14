@@ -1,0 +1,106 @@
+---
+alwaysApply: true
+---
+# 🚀 MVP Overview: ScrollStopper
+
+This file defines the scope and structure of the **MVP version of ScrollStopper**, an AI-powered tool for generating TikTok/Instagram slideshow videos from product screenshots and descriptions. The goal is to build a usable, differentiated product with a clear workflow and minimum complexity, launching July 22.
+
+---
+
+## ✅ Core MVP Features
+
+### 1. **Landing Page**
+- Simple, modern layout
+- Clear value proposition
+- CTA: “Start Free” or “Try the Demo”
+- Should reflect the "AI thinking tool" aesthetic (dark mode, violet accent)
+- Link to pricing and login/register
+
+---
+
+### 2. **Stripe Payment Integration**
+- Starter plan (default for all signups): no AI features
+- Pro plan ($40/month): unlocks AI slideshow generation + image description
+- Include:
+  - Stripe checkout flow
+  - Plan selection during onboarding or inside account settings
+  - Store `plan` and `stripe_customer_id` on user record
+
+---
+
+### 3. **Product Description Input**
+- Simple form field where users can describe their product (e.g., “A minimal time tracker for builders”)
+- This is used by the AI when generating slideshows
+- Allow updates/editing from a “Product Info” section
+
+---
+
+### 4. **Editor**
+- User can create or edit a slideshow manually
+- Slide features:
+  - Set background image (handle resizing/padding if not 1080x1920)
+  - Add text overlay (1 font, adjustable size)
+  - Set slide duration (in seconds)
+  - Add music (optional: choose from presets or upload)
+- UI should resemble a slide editor/timeline but be minimal and responsive
+
+---
+
+### 5. **Image Uploader / Collections**
+- Users can:
+  - Create image collections
+  - Upload images manually into collections
+- For **Pro users**, images are processed in the background by GPT-4o:
+  - Generates ~10-sentence description and 1-sentence summary
+  - Stored alongside the image record
+- UI: drag & drop upload, collection selector
+
+---
+
+### 6. **Auto Slideshow Generator (Pro only)**
+- For Pro users only
+- System uses:
+  - Product description
+  - Image descriptions (if available)
+- AI generates a complete slideshow:
+  - Slide text
+  - Image choices
+  - Durations
+  - Music (default or random)
+- Only supports **one slideshow generation at a time** in MVP
+- User can edit generated slideshow afterward in Editor
+
+---
+
+### 7. **Manual Video Download**
+- After user finishes a slideshow, provide download link for `.mp4` file
+- Use `ffmpeg` or `ffmpeg.wasm` to render server/client-side video
+- Schedule/posting APIs (e.g. TikTok) are **not included in MVP**
+
+---
+
+## 🎨 MVP Design Notes
+- Default dark mode UI with customizable colors via CSS variables
+- Use purple/violet as accent color (`--color-primary`)
+- Futuristic but minimal feel: the AI should *look like it’s thinking*
+- Use animated transitions or “thought preview” loaders where appropriate
+
+---
+
+## 🧩 Included Pages/Routes (Next.js)
+
+/ → Landing page
+/images → Upload image collections
+/editor → Manual slideshow editor
+/generate → Auto slideshow generator (Pro only)
+/account → Stripe integration + user plan
+/product → Product description input
+---
+
+## ⏳ Excluded from MVP (Planned Later)
+
+- Video scheduling/posting to TikTok or IG
+- Multiple video generations at once
+- Blow-up / batch format generator
+- View tracking or analytics
+- Hook/inspiration wall

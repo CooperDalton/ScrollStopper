@@ -1,0 +1,108 @@
+---
+alwaysApply: false
+---
+## 🛠 Tech Stack
+
+- **Frontend**: React + Next.js (App Router)
+- **Styling**: TailwindCSS with CSS custom properties (`--color-primary`, etc.)
+- **State**: React or Zustand
+- **Backend**: Supabase (auth, storage, database)
+- **Video Rendering**: `ffmpeg` or `ffmpeg.wasm` (for video stitching)
+- **AI**: GPT-4o (Vision) and GPT-3.5 for text scripting
+- **Payments**: Stripe (Starter, Pro, Scale tiers)
+- **Hosting**: Vercel
+
+---
+
+## 🧠 AI Capabilities
+
+- GPT-4o for image understanding + description generation (Pro & Scale)
+- GPT-4o or GPT-3.5-turbo for:
+  - Slide scripting
+  - Hook generation
+  - Format ideation
+- AI generates multiple slideshow ideas and allows users to regenerate, edit, or “blow up” a format they like into more variants
+
+---
+
+## 🧩 Feature Breakdown
+
+### 1. **Product Description Input**
+- Page or modal where users describe their product (name, description, target customer, etc.)
+- This is passed to the AI as context for all script and format generation
+
+### 2. **Image Upload + Collections**
+- Manual upload into named image collections
+- AI generates ~10-sentence descriptions + 1-sentence summaries (Pro & Scale users)
+- Used for contextual slide design and layout choices
+
+### 3. **Manual Slide Editor**
+- Add/remove slides
+- Change background image (handles non-1080x1920 sizes)
+- Add text (position x/y, font size, rotation)
+- Add overlay images (size, crop, rotation)
+- Set per-slide duration
+- Add music (global)
+
+### 4. **Auto Slideshow Generator (Pro & Scale only)**
+- One-click video creation using uploaded images and product context
+- AI selects images, writes copy, sets timing
+- Generates 1 video at a time in MVP; later supports batch mode
+
+### 5. **Mass Generation / Brainstorm Mode**
+- Generate multiple video formats from same input
+- Let user “Blow up” a good version → spawn 10 similar versions
+- Every generated slideshow is editable in the manual editor
+
+### 6. **Schedule + Download**
+- Download `.mp4` file for manual TikTok upload (default MVP)
+- Schedule UI in place, TikTok/Instagram API integration pending
+
+### 7. **Views Dashboard (Planned)**
+- Total view count per video
+- Monthly view breakdown
+- Top-performing video leaderboard per account
+
+---
+
+## 💰 Pricing Tiers
+
+| Tier      | Price/month | Features |
+|-----------|-------------|----------|
+| **Starter** | $10         | Limited AI access, lower video limits, manual editor only |
+| **Pro**     | $40         | Full AI features (auto generation, brainstorm mode, image descriptions), higher limits |
+| **Scale**   | $100        | All AI features + high monthly limits + batch slideshow generation (future) |
+
+---
+
+## 🎨 Design Principles
+
+- Futuristic and minimal (dark UI by default)
+- Purple/violet as primary accent (`#7B61FF`), customizable via CSS vars
+- Animated or "alive" UI showing the AI “thinking”
+  - Typing indicators
+  - Slide preview carousels
+  - Real-time AI brainstorms shown visually
+
+---
+
+## 📁 Project Structure (Simplified)
+
+```plaintext
+/app
+  /editor            → Slideshow editor
+  /upload            → Upload images to collections
+  /generate          → Auto slideshow generation
+  /dashboard         → Views & video management (future)
+  /account-settings  → Stripe billing + product info
+
+/components
+  SlideEditor.tsx
+  VideoPlayer.tsx
+  AIThoughtPreview.tsx
+  ImageCollectionUploader.tsx
+
+/lib
+  openai.ts          → GPT-4o + GPT-3.5 integration
+  videoGen.ts        → ffmpeg wrapper for rendering
+  stripe.ts          → Stripe checkout + plan sync
