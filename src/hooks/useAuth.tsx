@@ -19,16 +19,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Debug: Check if Supabase is properly configured
-  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('Supabase Key exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      console.log('Getting initial session...')
-      const { data: { session }, error } = await supabase.auth.getSession()
-      console.log('Initial session:', session, error)
+      const { data: { session } } = await supabase.auth.getSession()
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
@@ -39,7 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state change:', event, session)
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
@@ -51,8 +44,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      console.log('Attempting to sign in with Google...')
-      console.log('Redirect URL:', `${window.location.origin}/auth/callback`)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -65,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message }
       }
       
-      console.log('Sign in initiated successfully')
       return { success: true }
     } catch (error) {
       console.error('Error signing in with Google:', error)
