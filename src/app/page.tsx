@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from "next/image";
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 // Icon Components
-const PlayIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h14z" />
+const MenuIcon = () => (
+  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
   </svg>
 );
 
@@ -18,239 +19,346 @@ const ArrowRightIcon = () => (
 );
 
 const SparklesIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
   </svg>
 );
 
-const CheckIcon = () => (
+const PlayIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h14z" />
   </svg>
 );
 
-// Hero Section
-const HeroSection = () => (
-  <section className="relative overflow-hidden bg-[var(--color-bg)] pt-20 pb-16">
-    {/* Animated background */}
-    <div className="absolute inset-0 opacity-30">
-      <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-[var(--color-primary)] rounded-full filter blur-3xl animate-pulse-glow"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[var(--color-accent)] rounded-full filter blur-3xl animate-pulse-glow" style={{ animationDelay: '1s' }}></div>
-    </div>
-    
-    <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center">
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center px-4 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-full text-sm text-[var(--color-text-muted)]">
-            <SparklesIcon />
-            <span className="ml-2">AI-Powered Content Generation</span>
-          </div>
-        </div>
-        
-        <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
-          <span className="text-gradient">AI that thinks</span>
-          <br />
-          <span className="text-[var(--color-text)]">like a content strategist</span>
-        </h1>
-        
-        <p className="text-xl md:text-2xl text-[var(--color-text-muted)] max-w-3xl mx-auto mb-12 leading-relaxed">
-          Upload your product screenshots and let ScrollStopper generate scroll-stopping TikToks in seconds.
-        </p>
-        
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Link href="/products" className="bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:scale-105 animate-glow">
-            Start Free
-          </Link>
-          <button className="flex items-center gap-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text)] px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:bg-[var(--color-bg-tertiary)]">
-            <PlayIcon />
-            Watch Demo
-            <ArrowRightIcon />
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
+const UserIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
 );
 
-// How It Works Section
-const HowItWorksSection = () => (
-  <section className="py-20 bg-[var(--color-bg-secondary)]">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
-          How It Works
-        </h2>
-        <p className="text-xl text-[var(--color-text-muted)] max-w-2xl mx-auto">
-          Three simple steps to transform your product into viral content
-        </p>
-      </div>
-      
-      <div className="grid md:grid-cols-3 gap-8">
-        {[
-          {
-            step: "01",
-            title: "Describe your product",
-            description: "Tell our AI about your product in plain English. No technical jargon needed.",
-            icon: "📝"
-          },
-          {
-            step: "02", 
-            title: "Upload screenshots",
-            description: "Drop in your product screenshots, mockups, or any visual assets.",
-            icon: "📸"
-          },
-          {
-            step: "03",
-            title: "Let AI brainstorm and generate",
-            description: "Watch as our AI creates multiple video formats optimized for engagement.",
-            icon: "🤖"
-          }
-        ].map((item, index) => (
-          <div key={index} className="relative group">
-            <div className="bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-2xl p-8 h-full transition-all duration-300 hover:bg-[var(--color-bg)] hover:border-[var(--color-primary)] group-hover:scale-105">
-              <div className="text-4xl mb-6">{item.icon}</div>
-              <div className="text-sm font-mono text-[var(--color-primary)] mb-4">{item.step}</div>
-              <h3 className="text-xl font-bold text-[var(--color-text)] mb-4">{item.title}</h3>
-              <p className="text-[var(--color-text-muted)]">{item.description}</p>
+const ChevronDownIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+// Header Component
+const Header = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSignIn = async () => {
+    const result = await signInWithGoogle();
+    if (result.error) {
+      console.error('Failed to sign in:', result.error);
+      // You could show a toast notification here
+    }
+  };
+
+  const handleSignOut = async () => {
+    const result = await signOut();
+    if (result.error) {
+      console.error('Failed to sign out:', result.error);
+    }
+    setUserMenuOpen(false);
+  };
+
+  return (
+    <header className="bg-white/80 backdrop-blur-md border-b border-[var(--color-border)] fixed top-0 left-0 right-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center py-4">
+          {/* Logo */}
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+              <SparklesIcon />
             </div>
-            
-            {index < 2 && (
-              <div className="hidden md:block absolute top-1/2 -right-4 w-8 h-8 text-[var(--color-primary)]">
-                <ArrowRightIcon />
+            <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
+          </div>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center space-x-8">
+            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              Home
+            </Link>
+            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              Features
+            </Link>
+            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              Pricing
+            </Link>
+            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              About
+            </Link>
+          </nav>
+
+          {/* Auth Section */}
+          <div className="hidden md:flex items-center space-x-4">
+            {loading ? (
+              <div className="w-8 h-8 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent"></div>
+                         ) : user ? (
+               <div className="relative" ref={userMenuRef}>
+                 <button
+                   onClick={() => setUserMenuOpen(!userMenuOpen)}
+                   className="flex items-center space-x-2 p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors"
+                 >
+                  {user.user_metadata?.avatar_url ? (
+                    <img
+                      src={user.user_metadata.avatar_url}
+                      alt="User avatar"
+                      className="w-8 h-8 rounded-full"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
+                      <UserIcon />
+                    </div>
+                  )}
+                  <span className="text-[var(--color-text)] font-medium">
+                    {user.user_metadata?.full_name || user.email}
+                  </span>
+                  <ChevronDownIcon />
+                </button>
+
+                {/* User Dropdown Menu */}
+                {userMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-[var(--color-border)] py-2">
+                    <Link
+                      href="/dashboard"
+                      className="block px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      href="/profile"
+                      className="block px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Profile
+                    </Link>
+                    <hr className="my-2 border-[var(--color-border)]" />
+                    <button
+                      onClick={handleSignOut}
+                      className="block w-full text-left px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                <button onClick={handleSignIn} className="btn-outline">
+                  Sign In
+                </button>
+                <button className="btn-gradient">
+                  Get Started
+                </button>
+              </>
             )}
           </div>
-        ))}
-      </div>
-    </div>
-  </section>
-);
 
-// Live AI Brainstorm Preview Section
-const AIBrainstormSection = () => {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  
-  const brainstormCards = [
-    {
-      status: "Thinking...",
-      hook: "POV: You built the perfect productivity app",
-      cta: "But nobody knows it exists 😭",
-      format: "Problem/Solution Hook"
-    },
-    {
-      status: "Generated",
-      hook: "This app saves me 3 hours every day",
-      cta: "Link in bio to try it free ⬆️",
-      format: "Testimonial Style"
-    },
-    {
-      status: "Optimizing...",
-      hook: "Building in public: Day 47",
-      cta: "Finally launched! What do you think?",
-      format: "Behind-the-Scenes"
-    },
-    {
-      status: "Generated",
-      hook: "Productivity apps be like:",
-      cta: "Try this one that actually works",
-      format: "Trending Audio"
-    }
-  ];
-  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % brainstormCards.length);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, []);
-  
-  return (
-    <section className="py-20 bg-[var(--color-bg)]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
-            Watch AI <span className="text-gradient">Brainstorm</span> in Real-Time
-          </h2>
-          <p className="text-xl text-[var(--color-text-muted)] max-w-2xl mx-auto">
-            See how our AI generates multiple video concepts for maximum viral potential
-          </p>
+          {/* Mobile Menu Button */}
+          <button 
+            className="md:hidden"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            <MenuIcon />
+          </button>
         </div>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {brainstormCards.map((card, index) => (
-            <div 
-              key={index} 
-              className={`bg-[var(--color-bg-secondary)] border rounded-2xl p-6 transition-all duration-500 ${
-                currentSlide === index 
-                  ? 'border-[var(--color-primary)] bg-[var(--color-bg-tertiary)] scale-105' 
-                  : 'border-[var(--color-border)]'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <div className={`w-2 h-2 rounded-full ${
-                  card.status === 'Thinking...' ? 'bg-yellow-400 animate-pulse' :
-                  card.status === 'Optimizing...' ? 'bg-blue-400 animate-pulse' :
-                  'bg-green-400'
-                }`}></div>
-                <span className="text-sm text-[var(--color-text-muted)]">{card.status}</span>
+
+        {/* Mobile Menu */}
+        {isMenuOpen && (
+          <div className="md:hidden pb-4 border-t border-[var(--color-border)] mt-4">
+            <nav className="flex flex-col space-y-4 pt-4">
+              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+                Home
+              </Link>
+              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+                Features
+              </Link>
+              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+                Pricing
+              </Link>
+              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+                About
+              </Link>
+              <div className="flex flex-col space-y-2 pt-4">
+                {loading ? (
+                  <div className="w-8 h-8 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent mx-auto"></div>
+                ) : user ? (
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex items-center space-x-2 p-2">
+                      {user.user_metadata?.avatar_url ? (
+                        <img
+                          src={user.user_metadata.avatar_url}
+                          alt="User avatar"
+                          className="w-8 h-8 rounded-full"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
+                          <UserIcon />
+                        </div>
+                      )}
+                      <span className="text-[var(--color-text)] font-medium">
+                        {user.user_metadata?.full_name || user.email}
+                      </span>
+                    </div>
+                    <Link href="/dashboard" className="btn-outline">
+                      Dashboard
+                    </Link>
+                    <button onClick={handleSignOut} className="btn-outline">
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={handleSignIn} className="btn-outline">
+                      Sign In
+                    </button>
+                    <button className="btn-gradient">
+                      Get Started
+                    </button>
+                  </>
+                )}
               </div>
-              
-              <div className="bg-[var(--color-bg)] rounded-lg p-4 mb-4 border border-[var(--color-border)]">
-                <div className="text-sm font-semibold text-[var(--color-text)] mb-2">{card.hook}</div>
-                <div className="text-sm text-[var(--color-text-muted)]">{card.cta}</div>
-              </div>
-              
-              <div className="text-xs text-[var(--color-primary)] font-medium">{card.format}</div>
-            </div>
-          ))}
-        </div>
+            </nav>
+          </div>
+        )}
       </div>
-    </section>
+    </header>
   );
 };
 
-// Testimonials Section
-const TestimonialsSection = () => (
-  <section className="py-20 bg-[var(--color-bg-secondary)]">
+// Hero Section with Two-Column Layout
+const HeroSection = () => (
+  <section className="pt-32 pb-20 bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg-secondary)] to-[var(--color-bg-tertiary)] min-h-screen flex items-center">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid lg:grid-cols-2 gap-12 items-center">
+        {/* Left Column - Text Content */}
+        <div className="space-y-8">
+          {/* Badge */}
+          <div className="inline-flex items-center px-4 py-2 bg-gradient-light rounded-full border border-[var(--color-primary)]/20">
+            <SparklesIcon />
+            <span className="ml-2 text-sm font-medium text-[var(--color-primary)]">
+              Next-Gen AI Automation
+            </span>
+          </div>
+
+                     {/* Main Headline */}
+           <div className="space-y-6">
+             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
+               <span className="text-gradient">AI-powered content</span>{" "}
+               <span className="text-[var(--color-text)]">that thinks like a</span>
+               <br />
+               <span className="text-[var(--color-text)]">content strategist</span>
+             </h1>
+             
+             <div className="space-y-4">
+               <p className="text-xl text-[var(--color-text-muted)] max-w-lg leading-relaxed">
+                 Transform your product screenshots into scroll-stopping videos with AI that understands viral content.
+               </p>
+             </div>
+           </div>
+
+          {/* CTA Button */}
+          <div className="flex items-center space-x-4">
+            <button className="btn-gradient text-lg px-8 py-4 flex items-center space-x-2 animate-glow">
+              <span>TRY NOW</span>
+              <SparklesIcon />
+            </button>
+            <button className="btn-outline text-lg px-8 py-4 flex items-center space-x-2">
+              <PlayIcon />
+              <span>Watch Demo</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column - Visual Element */}
+        <div className="relative">
+          <div className="relative w-full h-96 lg:h-[500px] bg-gradient-primary rounded-4xl overflow-hidden animate-gradient">
+            {/* Placeholder for future video/gif */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-white">
+                <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                  <PlayIcon />
+                </div>
+                <p className="text-lg font-medium opacity-90">
+                  Video Coming Soon
+                </p>
+                <p className="text-sm opacity-75">
+                  AI-powered content generation in action
+                </p>
+              </div>
+            </div>
+            
+            {/* Decorative elements */}
+            <div className="absolute top-8 left-8 w-12 h-12 bg-white/20 rounded-full animate-float"></div>
+            <div className="absolute bottom-8 right-8 w-8 h-8 bg-white/30 rounded-full animate-float" style={{animationDelay: '2s'}}></div>
+            <div className="absolute top-1/2 right-16 w-6 h-6 bg-white/25 rounded-full animate-float" style={{animationDelay: '4s'}}></div>
+          </div>
+          
+          {/* Floating elements around the main visual */}
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-white glass-card rounded-2xl flex items-center justify-center animate-float">
+            <SparklesIcon />
+          </div>
+          <div className="absolute -bottom-4 -left-4 w-14 h-14 bg-white glass-card rounded-2xl flex items-center justify-center animate-float" style={{animationDelay: '1s'}}>
+            <ArrowRightIcon />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+// Features Section
+const FeaturesSection = () => (
+  <section className="py-20 bg-white">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
-          Loved by Creators
+        <h2 className="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
+          Powered by <span className="text-gradient">Advanced AI</span>
         </h2>
+        <p className="text-xl text-[var(--color-text-muted)] max-w-2xl mx-auto">
+          Make data-driven decisions with AI insights that transform your content strategy.
+        </p>
       </div>
-      
+
       <div className="grid md:grid-cols-3 gap-8">
         {[
           {
-            quote: "ScrollStopper turned my boring SaaS screenshots into viral TikToks. 2M views in the first week!",
-            author: "Sarah Chen",
-            role: "Indie Hacker",
-            avatar: "👩‍💻"
+            icon: "🤖",
+            title: "AI Content Analysis",
+            description: "Advanced algorithms analyze your screenshots and generate optimized content strategies."
           },
           {
-            quote: "The AI actually understands my product better than I do. It found angles I never thought of.",
-            author: "Marcus Rodriguez",
-            role: "Dropshipper",
-            avatar: "👨‍💼"
+            icon: "⚡",
+            title: "Instant Generation",
+            description: "Create scroll-stopping content in seconds, not hours. Efficiency redefined."
           },
           {
-            quote: "I was spending 5 hours per video. Now it's 5 minutes. This is insane.",
-            author: "Alex Kim",
-            role: "Content Creator",
-            avatar: "🎬"
+            icon: "🎯",
+            title: "Precision Targeting",
+            description: "AI identifies the best content angles for maximum engagement and conversions."
           }
-        ].map((testimonial, index) => (
-          <div key={index} className="bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-2xl p-8 transition-all duration-300 hover:border-[var(--color-primary)]">
-            <div className="text-[var(--color-text)] mb-6 text-lg leading-relaxed">
-              "{testimonial.quote}"
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-3xl">{testimonial.avatar}</div>
-              <div>
-                <div className="font-semibold text-[var(--color-text)]">{testimonial.author}</div>
-                <div className="text-[var(--color-text-muted)]">{testimonial.role}</div>
-              </div>
-            </div>
+        ].map((feature, index) => (
+          <div key={index} className="text-center p-8 rounded-3xl bg-gradient-light hover:shadow-lg transition-all duration-300">
+            <div className="text-4xl mb-4">{feature.icon}</div>
+            <h3 className="text-xl font-bold text-[var(--color-text)] mb-4">{feature.title}</h3>
+            <p className="text-[var(--color-text-muted)]">{feature.description}</p>
           </div>
         ))}
       </div>
@@ -258,116 +366,49 @@ const TestimonialsSection = () => (
   </section>
 );
 
-// Pricing Section
-const PricingSection = () => (
-  <section className="py-20 bg-[var(--color-bg)]">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
-          Simple Pricing
-        </h2>
-        <p className="text-xl text-[var(--color-text-muted)]">
-          Start free, upgrade when you're ready to scale
-        </p>
-      </div>
-      
-      <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        {/* Free Plan */}
-        <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-8">
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-[var(--color-text)] mb-2">Free</h3>
-            <div className="text-4xl font-bold text-[var(--color-text)] mb-2">$0</div>
-            <div className="text-[var(--color-text-muted)]">Perfect for getting started</div>
-          </div>
-          
-          <ul className="space-y-4 mb-8">
-            {[
-              "Manual video editor",
-              "Basic templates",
-              "720p exports",
-              "ScrollStopper watermark"
-            ].map((feature, index) => (
-              <li key={index} className="flex items-center gap-3">
-                <CheckIcon />
-                <span className="text-[var(--color-text)]">{feature}</span>
-              </li>
-            ))}
-          </ul>
-          
-          <button className="w-full bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-[var(--color-text)] py-3 rounded-xl font-semibold transition-all duration-300 hover:bg-[var(--color-bg)]">
-            Start Free
-          </button>
-        </div>
-        
-        {/* Pro Plan */}
-        <div className="bg-gradient-primary border-2 border-[var(--color-primary)] rounded-2xl p-8 relative">
-          <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-            <span className="bg-[var(--color-accent)] text-white px-4 py-1 rounded-full text-sm font-semibold">
-              Most Popular
-            </span>
-          </div>
-          
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
-            <div className="text-4xl font-bold text-white mb-2">$40<span className="text-lg">/mo</span></div>
-            <div className="text-white opacity-80">Everything you need to go viral</div>
-          </div>
-          
-          <ul className="space-y-4 mb-8">
-            {[
-              "AI-powered video generation",
-              "Unlimited exports",
-              "4K video quality", 
-              "No watermarks",
-              "Priority support",
-              "Advanced analytics"
-            ].map((feature, index) => (
-              <li key={index} className="flex items-center gap-3">
-                <CheckIcon />
-                <span className="text-white">{feature}</span>
-              </li>
-            ))}
-          </ul>
-          
-          <button className="w-full bg-white text-[var(--color-primary)] py-3 rounded-xl font-semibold transition-all duration-300 hover:bg-gray-100">
-            Start Pro Trial
-          </button>
-        </div>
+// CTA Section
+const CTASection = () => (
+  <section className="py-20 bg-gradient-primary">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+        Ready to Transform Your Content?
+      </h2>
+      <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
+        Join thousands of creators who are already using AI to generate scroll-stopping content.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <button className="bg-white text-[var(--color-primary)] px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-colors">
+          Start Free Trial
+        </button>
+        <button className="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-[var(--color-primary)] transition-colors">
+          Request Demo
+        </button>
       </div>
     </div>
   </section>
 );
 
-// Footer Section
-const FooterSection = () => (
-  <footer className="bg-[var(--color-bg-secondary)] border-t border-[var(--color-border)] py-12">
+// Footer
+const Footer = () => (
+  <footer className="bg-[var(--color-bg-secondary)] py-12 border-t border-[var(--color-border)]">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid md:grid-cols-4 gap-8">
         <div className="md:col-span-2">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-gradient-primary rounded-lg"></div>
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+              <SparklesIcon />
+            </div>
             <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
           </div>
           <p className="text-[var(--color-text-muted)] mb-6 max-w-md">
-            AI-powered video generation for founders and marketers who want to create scroll-stopping content.
+            AI-powered content generation that transforms screenshots into scroll-stopping videos.
           </p>
-          <div className="flex gap-4">
-            {['Twitter', 'LinkedIn', 'YouTube'].map((social) => (
-              <a 
-                key={social}
-                href="#" 
-                className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-              >
-                {social}
-              </a>
-            ))}
-          </div>
         </div>
         
         <div>
           <h4 className="font-semibold text-[var(--color-text)] mb-4">Product</h4>
           <ul className="space-y-2">
-            {['Features', 'Pricing', 'Templates', 'API'].map((link) => (
+            {['Features', 'Pricing', 'API', 'Templates'].map((link) => (
               <li key={link}>
                 <a href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
                   {link}
@@ -380,7 +421,7 @@ const FooterSection = () => (
         <div>
           <h4 className="font-semibold text-[var(--color-text)] mb-4">Company</h4>
           <ul className="space-y-2">
-            {['About', 'Blog', 'Support', 'Privacy'].map((link) => (
+            {['About', 'Blog', 'Careers', 'Contact'].map((link) => (
               <li key={link}>
                 <a href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">
                   {link}
@@ -404,12 +445,11 @@ const FooterSection = () => (
 export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--color-bg)]">
+      <Header />
       <HeroSection />
-      <HowItWorksSection />
-      <AIBrainstormSection />
-      <TestimonialsSection />
-      <PricingSection />
-      <FooterSection />
+      <FeaturesSection />
+      <CTASection />
+      <Footer />
     </div>
   );
 }
