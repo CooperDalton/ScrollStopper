@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 // Icon components
 const ProductsIcon = () => (
@@ -50,14 +51,15 @@ const navigation = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <div className="flex h-screen w-64 flex-col bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)]">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-6 py-6 border-b border-[var(--color-border)]">
+      <Link href="/" className="flex items-center gap-2 px-6 py-6 border-b border-[var(--color-border)]">
         <div className="w-8 h-8 bg-gradient-primary rounded-lg"></div>
         <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6">
@@ -88,12 +90,24 @@ export default function Sidebar() {
         {/* Account Info */}
         <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 bg-[var(--color-primary)] rounded-full flex items-center justify-center">
-              <UserIcon />
-            </div>
+            {user?.user_metadata?.avatar_url ? (
+              <img
+                src={user.user_metadata.avatar_url}
+                alt="User avatar"
+                className="w-8 h-8 rounded-full"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-[var(--color-primary)] rounded-full flex items-center justify-center">
+                <UserIcon />
+              </div>
+            )}
             <div>
-              <div className="text-sm font-medium text-[var(--color-text)]">John Doe</div>
-              <div className="text-xs text-[var(--color-text-muted)]">john@example.com</div>
+              <div className="text-sm font-medium text-[var(--color-text)]">
+                {user?.user_metadata?.full_name || user?.email || 'Guest'}
+              </div>
+              <div className="text-xs text-[var(--color-text-muted)]">
+                {user?.email || 'Not signed in'}
+              </div>
             </div>
           </div>
           <div className="flex items-center justify-between">

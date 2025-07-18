@@ -1,18 +1,34 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../lib/supabase'
 
-export function useAuth() {
+interface AuthContextType {
+  user: User | null
+  session: Session | null
+  loading: boolean
+  signInWithGoogle: () => Promise<{ success?: boolean; error?: string }>
+  signOut: () => Promise<{ success?: boolean; error?: string }>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Debug: Check if Supabase is properly configured
+  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('Supabase Key exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      console.log('Getting initial session...')
+      const { data: { session }, error } = await supabase.auth.getSession()
+      console.log('Initial session:', session, error)
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
@@ -23,6 +39,7 @@ export function useAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state change:', event, session)
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
@@ -34,6 +51,8 @@ export function useAuth() {
 
   const signInWithGoogle = async () => {
     try {
+      console.log('Attempting to sign in with Google...')
+      console.log('Redirect URL:', `${window.location.origin}/auth/callback`)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -46,6 +65,7 @@ export function useAuth() {
         return { error: error.message }
       }
       
+      console.log('Sign in initiated successfully')
       return { success: true }
     } catch (error) {
       console.error('Error signing in with Google:', error)
@@ -67,11 +87,25 @@ export function useAuth() {
     }
   }
 
-  return {
+  const value = {
     user,
     session,
     loading,
     signInWithGoogle,
     signOut
   }
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 } 

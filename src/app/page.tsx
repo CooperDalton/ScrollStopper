@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import Image from "next/image";
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,21 +45,7 @@ const ChevronDownIcon = () => (
 // Header Component
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const userMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const handleSignIn = async () => {
     const result = await signInWithGoogle();
@@ -74,7 +60,6 @@ const Header = () => {
     if (result.error) {
       console.error('Failed to sign out:', result.error);
     }
-    setUserMenuOpen(false);
   };
 
   return (
@@ -82,12 +67,12 @@ const Header = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
           {/* Logo */}
-          <div className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
               <SparklesIcon />
             </div>
             <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
@@ -109,64 +94,23 @@ const Header = () => {
           <div className="hidden md:flex items-center space-x-4">
             {loading ? (
               <div className="w-8 h-8 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent"></div>
-                         ) : user ? (
-               <div className="relative" ref={userMenuRef}>
-                 <button
-                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                   className="flex items-center space-x-2 p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors"
-                 >
-                  {user.user_metadata?.avatar_url ? (
-                    <img
-                      src={user.user_metadata.avatar_url}
-                      alt="User avatar"
-                      className="w-8 h-8 rounded-full"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
-                      <UserIcon />
-                    </div>
-                  )}
-                  <span className="text-[var(--color-text)] font-medium">
-                    {user.user_metadata?.full_name || user.email}
-                  </span>
-                  <ChevronDownIcon />
+            ) : user ? (
+              <>
+                <button onClick={handleSignOut} className="btn-outline">
+                  Log Out
                 </button>
-
-                {/* User Dropdown Menu */}
-                {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-[var(--color-border)] py-2">
-                    <Link
-                      href="/dashboard"
-                      className="block px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      href="/profile"
-                      className="block px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <hr className="my-2 border-[var(--color-border)]" />
-                    <button
-                      onClick={handleSignOut}
-                      className="block w-full text-left px-4 py-2 text-[var(--color-text)] hover:bg-[var(--color-bg-secondary)] transition-colors"
-                    >
-                      Sign Out
-                    </button>
-                  </div>
-                )}
-              </div>
+                <Link href="/editor" className="btn-gradient">
+                  Get Started
+                </Link>
+              </>
             ) : (
               <>
                 <button onClick={handleSignIn} className="btn-outline">
                   Sign In
                 </button>
-                <button className="btn-gradient">
+                <Link href="/editor" className="btn-gradient">
                   Get Started
-                </button>
+                </Link>
               </>
             )}
           </div>
@@ -200,38 +144,22 @@ const Header = () => {
                 {loading ? (
                   <div className="w-8 h-8 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent mx-auto"></div>
                 ) : user ? (
-                  <div className="flex flex-col space-y-2">
-                    <div className="flex items-center space-x-2 p-2">
-                      {user.user_metadata?.avatar_url ? (
-                        <img
-                          src={user.user_metadata.avatar_url}
-                          alt="User avatar"
-                          className="w-8 h-8 rounded-full"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
-                          <UserIcon />
-                        </div>
-                      )}
-                      <span className="text-[var(--color-text)] font-medium">
-                        {user.user_metadata?.full_name || user.email}
-                      </span>
-                    </div>
-                    <Link href="/dashboard" className="btn-outline">
-                      Dashboard
-                    </Link>
+                  <>
                     <button onClick={handleSignOut} className="btn-outline">
-                      Sign Out
+                      Log Out
                     </button>
-                  </div>
+                    <Link href="/editor" className="btn-gradient">
+                      Get Started
+                    </Link>
+                  </>
                 ) : (
                   <>
                     <button onClick={handleSignIn} className="btn-outline">
                       Sign In
                     </button>
-                    <button className="btn-gradient">
+                    <Link href="/editor" className="btn-gradient">
                       Get Started
-                    </button>
+                    </Link>
                   </>
                 )}
               </div>
