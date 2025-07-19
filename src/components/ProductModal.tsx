@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Product, CreateProductData, createProduct, updateProduct } from '@/lib/products';
+import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct } from '@/lib/products';
 
 interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   product?: Product | null; // If provided, we're editing; if null/undefined, we're adding
+  addProduct?: (data: CreateProductData) => Promise<{ product: Product | null; error: Error | null }>;
+  updateProduct?: (id: string, data: UpdateProductData) => Promise<{ product: Product | null; error: Error | null }>;
 }
 
 const CloseIcon = () => (
@@ -16,7 +18,7 @@ const CloseIcon = () => (
   </svg>
 );
 
-const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess, product }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess, product, addProduct: swrAddProduct, updateProduct: swrUpdateProduct }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: ''
@@ -48,6 +50,23 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
       setErrors({ name: '', description: '' });
     }
   }, [isOpen, product]);
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen && !isLoading) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscapeKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKey);
+    };
+  }, [isOpen, isLoading, onClose]);
 
   const validateForm = () => {
     const newErrors = { name: '', description: '' };
@@ -103,7 +122,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
     try {
       if (isEditMode && product) {
         // Update existing product
-        const { product: updatedProduct, error } = await updateProduct(product.id, {
+        const updateFunction = swrUpdateProduct || updateProduct;
+        const { product: updatedProduct, error } = await updateFunction(product.id, {
           name: formData.name.trim(),
           description: formData.description.trim()
         });
@@ -115,7 +135,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
         }
       } else {
         // Create new product
-        const { product: newProduct, error } = await createProduct({
+        const addFunction = swrAddProduct || createProduct;
+        const { product: newProduct, error } = await addFunction({
           name: formData.name.trim(),
           description: formData.description.trim()
         });

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import ProductModal from '../../components/ProductModal';
-import { Product, getUserProducts } from '@/lib/products';
+import { Product } from '@/lib/products';
 import { useAuth } from '@/hooks/useAuth';
+import { useProducts } from '@/hooks/useProducts';
 
 // Icons
 const PlusIcon = () => (
@@ -71,33 +72,10 @@ const EmptyState: React.FC<{ onAddProduct: () => void }> = ({ onAddProduct }) =>
 );
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { user } = useAuth();
-
-  const fetchProducts = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    try {
-      const { products: fetchedProducts, error } = await getUserProducts();
-      if (error) {
-        console.error('Error fetching products:', error);
-      } else {
-        setProducts(fetchedProducts);
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProducts();
-  }, [user]);
+  const { products, isLoading, addProduct, updateProduct } = useProducts();
 
   const handleAddProduct = () => {
     setSelectedProduct(null);
@@ -115,10 +93,10 @@ export default function ProductsPage() {
   };
 
   const handleModalSuccess = () => {
-    fetchProducts(); // Refresh the product list
+    // SWR will automatically refresh the data
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <DashboardLayout>
         <div className="flex-1 p-8">
@@ -166,7 +144,7 @@ export default function ProductsPage() {
             <EmptyState onAddProduct={handleAddProduct} />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((product) => (
+              {products.map((product: Product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -184,6 +162,8 @@ export default function ProductsPage() {
         onClose={handleModalClose}
         onSuccess={handleModalSuccess}
         product={selectedProduct}
+        addProduct={addProduct}
+        updateProduct={updateProduct}
       />
     </DashboardLayout>
   );

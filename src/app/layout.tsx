@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/hooks/useAuth';
+import { SWRProvider } from '@/components/SWRProvider';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -36,9 +37,11 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <SWRProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </SWRProvider>
       </body>
     </html>
   );
