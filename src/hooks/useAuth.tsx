@@ -19,23 +19,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const insertUserToDB = async (userData: User) => {
+    try {
+      console.log('Inserting user to database:', userData.email)
+      
+      const response = await fetch('/api/insert-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: userData.id,
+          full_name: userData.user_metadata?.full_name || 
+                    userData.user_metadata?.name || 
+                    'Unknown User'
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to insert user')
+      }
+      
+      console.log('✅ User inserted successfully')
+    } catch (error) {
+      console.error('❌ Error inserting user:', error)
+    }
+  }
+
   useEffect(() => {
-    // Get initial session
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
+      
+      if (session?.user) {
+        await insertUserToDB(session.user)
+      }
     }
 
     getInitialSession()
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event)
+        
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
+        
+        if (event === 'SIGNED_IN' && session?.user) {
+          await insertUserToDB(session.user)
+        }
       }
     )
 
@@ -98,4 +132,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
-} 
+}

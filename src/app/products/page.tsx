@@ -20,14 +20,6 @@ const EditIcon = () => (
 );
 
 const ProductCard: React.FC<{ product: Product; onEdit: () => void }> = ({ product, onEdit }) => {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
   return (
     <div 
       className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 hover:border-[var(--color-primary)] transition-colors cursor-pointer group"
@@ -48,16 +40,9 @@ const ProductCard: React.FC<{ product: Product; onEdit: () => void }> = ({ produ
         </button>
       </div>
       
-      <p className="text-[var(--color-text-muted)] text-sm mb-4 line-clamp-3">
+      <p className="text-[var(--color-text-muted)] text-sm line-clamp-3">
         {product.description}
       </p>
-      
-      <div className="flex items-center justify-between text-xs text-[var(--color-text-muted)]">
-        <span>Created {formatDate(product.created_at)}</span>
-        {product.updated_at !== product.created_at && (
-          <span>Updated {formatDate(product.updated_at)}</span>
-        )}
-      </div>
     </div>
   );
 };

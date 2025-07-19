@@ -6,7 +6,7 @@ export interface Product {
   description: string
   user_id: string
   created_at: string
-  updated_at: string
+  // Note: updated_at column does not exist in database schema
 }
 
 export interface CreateProductData {
@@ -102,17 +102,20 @@ export async function updateProduct(id: string, data: UpdateProductData) {
       throw new Error('User must be authenticated')
     }
 
-    const updateData: any = { ...data, updated_at: new Date().toISOString() }
-
     const { data: product, error } = await supabase
       .from('products')
-      .update(updateData)
+      .update(data)
       .eq('id', id)
       .eq('user_id', user.id)
       .select()
       .single()
 
     if (error) throw error
+    
+    if (!product) {
+      throw new Error('Product not found or you do not have permission to update it')
+    }
+    
     return { product, error: null }
   } catch (error) {
     console.error('Error updating product:', error)

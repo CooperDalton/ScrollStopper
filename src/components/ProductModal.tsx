@@ -140,7 +140,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.05)' }}>
       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl w-full max-w-md mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[var(--color-border)]">
@@ -201,13 +201,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
               {errors.description && (
                 <p className="text-red-500 text-sm">{errors.description}</p>
               )}
-              <p className={`text-sm ml-auto ${
-                formData.description.trim().length < 50 
-                  ? 'text-[var(--color-text-muted)]' 
-                  : 'text-green-500'
-              }`}>
-                {formData.description.trim().length}/50 characters
-              </p>
+              {formData.description.trim().length < 50 && (
+                <p className="text-red-500 text-sm ml-auto">
+                  {formData.description.trim().length}/50 characters
+                </p>
+              )}
             </div>
           </div>
 
