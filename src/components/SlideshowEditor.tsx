@@ -97,12 +97,27 @@ const PlayIcon = () => (
 export default function SlideshowEditor() {
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('1');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('slide-1');
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const currentSlideshow = mockSlideshows.find(s => s.id === selectedSlideshowId);
   const currentSlide = currentSlideshow?.slides.find(s => s.id === selectedSlideId);
 
   const handleSlideSelect = (slideId: string) => {
     setSelectedSlideId(slideId);
+    
+    // Scroll the selected slide to center
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`);
+        if (slideElement) {
+          slideElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center'
+          });
+        }
+      }
+    }, 100); // Small delay to allow for state update
   };
 
   const handleAddSlide = () => {
@@ -168,11 +183,11 @@ export default function SlideshowEditor() {
       <div className="flex-1 flex flex-col">
         {/* Canvas and Slides Area */}
         <div className="flex-1 flex items-center justify-center p-8">
-          <div className="flex items-center gap-6">
+          <div className="w-full h-[600px] flex items-center justify-center">
             {/* Horizontal Slides Row */}
-            <div className="flex items-center gap-4 overflow-x-auto pb-4" style={{ scrollSnapType: 'x mandatory' }}>
+            <div className="flex items-center gap-2 overflow-x-auto pb-4 w-full h-full" style={{ scrollSnapType: 'x mandatory', paddingLeft: '50%', paddingRight: '50%' }} ref={scrollContainerRef}>
               {currentSlideshow?.slides.map((slide, index) => (
-                <div key={slide.id} className="flex-shrink-0" style={{ scrollSnapAlign: 'center' }}>
+                <div key={slide.id} className="flex-shrink-0 h-full flex items-center justify-center" style={{ scrollSnapAlign: 'center', minWidth: '350px' }} data-slide-id={slide.id}>
                   <button
                     onClick={() => handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
@@ -183,7 +198,7 @@ export default function SlideshowEditor() {
                   >
                     <div className={`relative ${
                       selectedSlideId === slide.id
-                        ? 'w-[400px] h-[711px]' // Large selected slide
+                        ? 'w-[300px] h-[533px]' // Less huge selected slide
                         : 'w-[200px] h-[356px]' // Smaller non-selected slides
                     } rounded-2xl overflow-hidden border-4 ${
                       selectedSlideId === slide.id
@@ -216,7 +231,7 @@ export default function SlideshowEditor() {
               ))}
 
               {/* Add Slide Button */}
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 h-full flex items-center justify-center" style={{ minWidth: '350px' }}>
                 <button
                   onClick={handleAddSlide}
                   className="w-[200px] h-[356px] bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
