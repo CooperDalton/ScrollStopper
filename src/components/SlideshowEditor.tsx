@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as fabric from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
-import ImageCropModal from './ImageCropModal';
 
 // Database-compatible interfaces
 interface SlideText {
@@ -22,12 +21,7 @@ interface SlideOverlay {
   id: string;
   slide_id: string;
   image_id: string;
-  crop?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
+  crop?: any; // jsonb in database
   position_x: number;
   position_y: number;
   rotation: number;
@@ -143,8 +137,6 @@ export default function SlideshowEditor() {
   const [selectedSlideId, setSelectedSlideId] = useState<string>('slide-1');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
-  const [cropOverlayId, setCropOverlayId] = useState<string | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
@@ -337,11 +329,7 @@ export default function SlideshowEditor() {
 
     slide.overlays.forEach(overlayData => {
       if (overlayData.imageUrl) {
-        const loadImage = overlayData.crop 
-          ? createCroppedFabricImage(overlayData.imageUrl, overlayData.crop)
-          : fabric.Image.fromURL(overlayData.imageUrl);
-
-        loadImage.then((img: fabric.Image) => {
+        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
           img.set({
             left: overlayData.position_x,
             top: overlayData.position_y,
@@ -363,24 +351,6 @@ export default function SlideshowEditor() {
 
           // Store the overlay ID on the fabric object for later reference
           img.set('overlayId', overlayData.id);
-
-          // Add double-click handler for cropping
-          let clickCount = 0;
-          let clickTimeout: NodeJS.Timeout;
-          
-          img.on('mousedown', () => {
-            clickCount++;
-            if (clickCount === 1) {
-              clickTimeout = setTimeout(() => {
-                clickCount = 0;
-              }, 300);
-            } else if (clickCount === 2) {
-              clearTimeout(clickTimeout);
-              clickCount = 0;
-              setCropOverlayId(overlayData.id);
-              setIsCropModalOpen(true);
-            }
-          });
 
           // Listen for changes and update data
           img.on('moving', () => updateOverlayData(overlayData.id, img));
@@ -561,28 +531,6 @@ export default function SlideshowEditor() {
     }
   };
 
-  const applyCropToImage = (img: fabric.Image, crop: { x: number; y: number; width: number; height: number }) => {
-    // Create a cropped version using fabric's clipPath
-    const clipPath = new fabric.Rect({
-      left: -crop.x,
-      top: -crop.y,
-      width: crop.width,
-      height: crop.height,
-      absolutePositioned: true
-    });
-    img.set({ clipPath });
-    return img;
-  };
-
-  const createCroppedFabricImage = (imageUrl: string, crop: { x: number; y: number; width: number; height: number }): Promise<fabric.Image> => {
-    return new Promise((resolve, reject) => {
-      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
-        applyCropToImage(img, crop);
-        resolve(img);
-      }).catch(reject);
-    });
-  };
-
   const handleBackgroundImageSelect = (imageUrl: string, imageId: string) => {
     if (!currentSlide) return;
 
@@ -688,24 +636,6 @@ export default function SlideshowEditor() {
         // Store the overlay ID on the fabric object for later reference
         img.set('overlayId', overlayId);
 
-        // Add double-click handler for cropping
-        let clickCount = 0;
-        let clickTimeout: NodeJS.Timeout;
-        
-        img.on('mousedown', () => {
-          clickCount++;
-          if (clickCount === 1) {
-            clickTimeout = setTimeout(() => {
-              clickCount = 0;
-            }, 300);
-          } else if (clickCount === 2) {
-            clearTimeout(clickTimeout);
-            clickCount = 0;
-            setCropOverlayId(overlayId);
-            setIsCropModalOpen(true);
-          }
-        });
-
         // Listen for changes and update data
         img.on('moving', () => updateOverlayData(overlayId, img));
         img.on('rotating', () => updateOverlayData(overlayId, img));
@@ -721,93 +651,6 @@ export default function SlideshowEditor() {
         console.warn('Failed to load image overlay:', imageUrl, error);
       });
     }
-  };
-
-  const handleCropConfirm = (crop: { x: number; y: number; width: number; height: number }) => {
-    if (!cropOverlayId || !currentSlide?.overlays) return;
-
-    const overlayData = currentSlide.overlays.find(o => o.id === cropOverlayId);
-    if (!overlayData) return;
-
-    // Update the overlay data with crop information
-    overlayData.crop = crop;
-
-    // Find and update the fabric object on canvas
-    const canvas = canvasRefs.current[selectedSlideId];
-    if (canvas) {
-      const objects = canvas.getObjects();
-      const fabricObj = objects.find(obj => obj.get('overlayId') === cropOverlayId) as fabric.Image;
-      
-      if (fabricObj && overlayData.imageUrl) {
-        // Remove the old object
-        canvas.remove(fabricObj);
-        
-        // Add the cropped version
-        createCroppedFabricImage(overlayData.imageUrl, crop).then((img: fabric.Image) => {
-          img.set({
-            left: overlayData.position_x,
-            top: overlayData.position_y,
-            angle: overlayData.rotation,
-            scaleX: overlayData.size / 100,
-            scaleY: overlayData.size / 100,
-            originX: 'center',
-            originY: 'center',
-            lockUniScaling: true
-          });
-
-          // Disable stretching controls
-          img.setControlsVisibility({
-            ml: false,
-            mb: false,
-            mr: false,
-            mt: false,
-          });
-
-          // Store the overlay ID
-          img.set('overlayId', cropOverlayId);
-
-          // Add double-click handler for re-cropping
-          let clickCount = 0;
-          let clickTimeout: NodeJS.Timeout;
-          
-          img.on('mousedown', () => {
-            clickCount++;
-            if (clickCount === 1) {
-              clickTimeout = setTimeout(() => {
-                clickCount = 0;
-              }, 300);
-            } else if (clickCount === 2) {
-              clearTimeout(clickTimeout);
-              clickCount = 0;
-              setCropOverlayId(cropOverlayId);
-              setIsCropModalOpen(true);
-            }
-          });
-
-          // Listen for changes
-          img.on('moving', () => updateOverlayData(cropOverlayId, img));
-          img.on('rotating', () => updateOverlayData(cropOverlayId, img));
-          img.on('scaling', () => updateOverlayData(cropOverlayId, img));
-
-          canvas.add(img);
-          canvas.setActiveObject(img);
-          canvas.renderAll();
-          
-          // Ensure proper layering
-          ensureProperLayering(canvas);
-        }).catch((error) => {
-          console.warn('Failed to apply crop:', error);
-        });
-      }
-    }
-
-    // Reset crop modal state
-    setCropOverlayId(null);
-  };
-
-  const getCurrentCropOverlay = () => {
-    if (!cropOverlayId || !currentSlide?.overlays) return null;
-    return currentSlide.overlays.find(o => o.id === cropOverlayId);
   };
 
   return (
@@ -984,18 +827,6 @@ export default function SlideshowEditor() {
         onClose={() => setIsImageModalOpen(false)}
         onImageSelect={handleImageOverlaySelect}
         title="Select Image"
-      />
-
-      {/* Image Crop Modal */}
-      <ImageCropModal
-        isOpen={isCropModalOpen}
-        onClose={() => {
-          setIsCropModalOpen(false);
-          setCropOverlayId(null);
-        }}
-        imageUrl={getCurrentCropOverlay()?.imageUrl || ''}
-        currentCrop={getCurrentCropOverlay()?.crop}
-        onCropConfirm={handleCropConfirm}
       />
     </div>
   );
