@@ -105,19 +105,27 @@ export default function SlideshowEditor() {
   const handleSlideSelect = (slideId: string) => {
     setSelectedSlideId(slideId);
     
-    // Scroll the selected slide to center
+    // Manually center the slide within the fixed container
     setTimeout(() => {
       if (scrollContainerRef.current) {
-        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`);
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`) as HTMLElement;
         if (slideElement) {
-          slideElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-            inline: 'center'
+          const container = scrollContainerRef.current;
+          const containerWidth = container.clientWidth;
+          const slideLeft = slideElement.offsetLeft;
+          const slideWidth = slideElement.offsetWidth;
+          
+          // Calculate scroll position to center the slide within the fixed container
+          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+          
+          // Smooth scroll to the calculated position
+          container.scrollTo({
+            left: scrollLeft,
+            behavior: 'smooth'
           });
         }
       }
-    }, 100); // Small delay to allow for state update
+    }, 50);
   };
 
   const handleAddSlide = () => {
@@ -136,25 +144,33 @@ export default function SlideshowEditor() {
     currentSlideshow.slides.push(newSlide);
     setSelectedSlideId(newSlideId);
     
-    // Scroll the new slide to center
+    // Manually center the new slide within the fixed container
     setTimeout(() => {
       if (scrollContainerRef.current) {
-        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlideId}"]`);
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlideId}"]`) as HTMLElement;
         if (slideElement) {
-          slideElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-            inline: 'center'
+          const container = scrollContainerRef.current;
+          const containerWidth = container.clientWidth;
+          const slideLeft = slideElement.offsetLeft;
+          const slideWidth = slideElement.offsetWidth;
+          
+          // Calculate scroll position to center the slide within the fixed container
+          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+          
+          // Smooth scroll to the calculated position
+          container.scrollTo({
+            left: scrollLeft,
+            behavior: 'smooth'
           });
         }
       }
-    }, 100); // Small delay to allow for DOM update
+    }, 50);
   };
 
   return (
-    <div className="flex h-full bg-[var(--color-bg)]">
+    <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       {/* Left Sidebar - Slideshows */}
-      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col">
+      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col flex-shrink-0">
         {/* My Slideshows Header */}
         <div className="p-6 border-b border-[var(--color-border)]">
           <h2 className="text-xl font-bold text-[var(--color-text)]">My Slideshows</h2>
@@ -194,14 +210,17 @@ export default function SlideshowEditor() {
       </div>
 
       {/* Main Center Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Canvas and Slides Area */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Canvas and Slides Area - Truly fixed width container */}
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full h-[650px] flex items-center justify-center">
-            {/* Horizontal Slides Row */}
-            <div className="flex items-center gap-1 overflow-x-auto pb-4 w-full h-full scrollbar-hide" style={{ scrollSnapType: 'x mandatory', paddingLeft: '50%', paddingRight: '50%' }} ref={scrollContainerRef}>
+          <div className="w-[1000px] h-[650px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+            {/* Horizontal Slides Row - Container with fixed width */}
+            <div className="absolute inset-0 flex items-center gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth" ref={scrollContainerRef}>
+              {/* Left spacer to allow centering of first slide */}
+              <div className="flex-shrink-0 w-[400px]"></div>
+              
               {currentSlideshow?.slides.map((slide, index) => (
-                <div key={slide.id} className="flex-shrink-0 h-full flex items-center justify-center" style={{ scrollSnapAlign: 'center', minWidth: '250px' }} data-slide-id={slide.id}>
+                <div key={slide.id} className="flex-shrink-0 flex items-center justify-center" data-slide-id={slide.id}>
                   <button
                     onClick={() => handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
@@ -245,7 +264,7 @@ export default function SlideshowEditor() {
               ))}
 
               {/* Add Slide Button */}
-              <div className="flex-shrink-0 h-full flex items-center justify-center" style={{ minWidth: '320px' }}>
+              <div className="flex-shrink-0 flex items-center justify-center">
                 <button
                   onClick={handleAddSlide}
                   className="w-[200px] h-[356px] bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
@@ -256,27 +275,28 @@ export default function SlideshowEditor() {
                   </div>
                 </button>
               </div>
+              
+              {/* Right spacer to allow centering of last slide */}
+              <div className="flex-shrink-0 w-[400px]"></div>
             </div>
           </div>
         </div>
 
-        {/* Control Panel */}
-        <div className="p-8">
-          <div className="flex justify-center">
-            <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 shadow-lg">
-              <div className="flex items-center gap-4">
-                <button className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors">
-                  Background
-                </button>
-                <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
-                  Text
-                </button>
-                <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
-                  Image
-                </button>
-                <div className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)]">
-                  {currentSlide?.duration_seconds || 3}s
-                </div>
+        {/* Control Panel - Fixed position in center of slides area */}
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
+          <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center gap-4">
+              <button className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors">
+                Background
+              </button>
+              <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
+                Text
+              </button>
+              <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
+                Image
+              </button>
+              <div className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)]">
+                {currentSlide?.duration_seconds || 3}s
               </div>
             </div>
           </div>
