@@ -211,9 +211,9 @@ export default function SlideshowEditor() {
 
       {/* Main Center Area */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Canvas and Slides Area - Truly fixed width container */}
+        {/* Canvas and Slides Area - Dynamic width container */}
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-[1000px] h-[650px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+          <div className="w-full h-full max-h-[650px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
             {/* Horizontal Slides Row - Container with fixed width */}
             <div className="absolute inset-0 flex items-center gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth" ref={scrollContainerRef}>
               {/* Left spacer to allow centering of first slide */}
