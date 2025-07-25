@@ -9,6 +9,7 @@ interface ImageSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImageSelect: (imageUrl: string, imageId: string) => void;
+  title?: string;
 }
 
 const XIcon = () => (
@@ -29,7 +30,7 @@ const ArrowLeftIcon = () => (
   </svg>
 );
 
-export default function ImageSelectionModal({ isOpen, onClose, onImageSelect }: ImageSelectionModalProps) {
+export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, title = 'Select Background Image' }: ImageSelectionModalProps) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   
@@ -81,7 +82,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect }: 
             )}
             <div>
               <h2 className="text-xl font-semibold text-[var(--color-text)]">
-                {selectedCollection ? selectedCollection.name : 'Select Background Image'}
+                {selectedCollection ? selectedCollection.name : title}
               </h2>
               <p className="text-sm text-[var(--color-text-muted)] mt-1">
                 {selectedCollection ? 'Choose an image from this collection' : 'Choose a collection to browse images'}

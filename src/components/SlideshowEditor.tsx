@@ -17,6 +17,20 @@ interface SlideText {
   created_at: string;
 }
 
+interface SlideOverlay {
+  id: string;
+  slide_id: string;
+  image_id: string;
+  crop?: any; // jsonb in database
+  position_x: number;
+  position_y: number;
+  rotation: number;
+  size: number;
+  created_at: string;
+  // Computed properties for UI
+  imageUrl?: string;
+}
+
 interface Slide {
   id: string;
   slideshow_id: string;
@@ -26,6 +40,7 @@ interface Slide {
   // Computed properties for UI
   backgroundImage?: string;
   texts?: SlideText[];
+  overlays?: SlideOverlay[];
 }
 
 interface Slideshow {
@@ -59,7 +74,8 @@ const mockSlideshows: Slideshow[] = [
         duration_seconds: 3,
         created_at: new Date().toISOString(),
         backgroundImage: 'https://picsum.photos/1080/1920?random=1',
-        texts: []
+        texts: [],
+        overlays: []
       },
       { 
         id: 'slide-2', 
@@ -67,7 +83,8 @@ const mockSlideshows: Slideshow[] = [
         duration_seconds: 3,
         created_at: new Date().toISOString(),
         backgroundImage: 'https://picsum.photos/1080/1920?random=2',
-        texts: []
+        texts: [],
+        overlays: []
       },
       { 
         id: 'slide-3', 
@@ -75,7 +92,8 @@ const mockSlideshows: Slideshow[] = [
         duration_seconds: 3,
         created_at: new Date().toISOString(),
         backgroundImage: 'https://picsum.photos/1080/1920?random=3',
-        texts: []
+        texts: [],
+        overlays: []
       },
     ]
   },
@@ -94,7 +112,8 @@ const mockSlideshows: Slideshow[] = [
         duration_seconds: 5,
         created_at: new Date().toISOString(),
         backgroundImage: 'https://picsum.photos/1080/1920?random=4',
-        texts: []
+        texts: [],
+        overlays: []
       },
     ]
   }
@@ -116,6 +135,7 @@ const PlayIcon = () => (
 export default function SlideshowEditor() {
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('1');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('slide-1');
+  const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
@@ -144,6 +164,41 @@ export default function SlideshowEditor() {
     };
   }, []);
 
+  // Keyboard event listener for delete functionality
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const canvas = canvasRefs.current[selectedSlideId];
+        if (canvas) {
+          const activeObject = canvas.getActiveObject();
+          if (activeObject && !activeObject.get('isBackground')) {
+            // Remove from canvas
+            canvas.remove(activeObject);
+            canvas.renderAll();
+
+            // Remove from slide data
+            if (activeObject.get('textId')) {
+              // It's a text object
+              const textId = activeObject.get('textId');
+              if (currentSlide?.texts) {
+                currentSlide.texts = currentSlide.texts.filter(t => t.id !== textId);
+              }
+            } else if (activeObject.get('overlayId')) {
+              // It's an image overlay
+              const overlayId = activeObject.get('overlayId');
+              if (currentSlide?.overlays) {
+                currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [selectedSlideId, currentSlide]);
+
   // Initialize fabric canvas for a slide
   const initializeCanvas = (slideId: string, canvasElement: HTMLCanvasElement) => {
     // Dispose existing canvas if it exists
@@ -154,6 +209,8 @@ export default function SlideshowEditor() {
       height: 533,
       backgroundColor: '#ffffff'
     });
+
+
 
     // Store references
     canvasRefs.current[slideId] = canvas;
@@ -176,18 +233,21 @@ export default function SlideshowEditor() {
         canvas.add(img);
         canvas.renderAll();
         
-        // After background is loaded, restore text elements
+        // After background is loaded, restore text elements and overlays
         restoreTextElements(slideId, canvas);
+        restoreImageOverlays(slideId, canvas);
       }).catch((error) => {
         console.warn('Failed to load background image:', slide.backgroundImage, error);
         // Continue without background image - canvas will remain white
         
-        // Still restore text elements even if background fails
+        // Still restore text elements and overlays even if background fails
         restoreTextElements(slideId, canvas);
+        restoreImageOverlays(slideId, canvas);
       });
     } else {
-      // No background image, just restore text elements
+      // No background image, just restore text elements and overlays
       restoreTextElements(slideId, canvas);
+      restoreImageOverlays(slideId, canvas);
     }
   };
 
@@ -205,7 +265,16 @@ export default function SlideshowEditor() {
         textAlign: 'center',
         originX: 'center',
         originY: 'center',
-        angle: textData.rotation
+        angle: textData.rotation,
+        lockUniScaling: true
+      });
+
+      // Disable stretching controls for text
+      fabricText.setControlsVisibility({
+        ml: false, // middle left
+        mb: false, // middle bottom  
+        mr: false, // middle right
+        mt: false, // middle top
       });
 
       // Store the text ID on the fabric object for later reference
@@ -221,6 +290,84 @@ export default function SlideshowEditor() {
     });
 
     canvas.renderAll();
+    
+    // Ensure proper layering after restoring elements
+    ensureProperLayering(canvas);
+  };
+
+  const ensureProperLayering = (canvas: fabric.Canvas) => {
+    const objects = canvas.getObjects();
+    
+    // Sort objects by type: background -> overlays -> text
+    const backgroundObjects = objects.filter(obj => obj.get('isBackground'));
+    const overlayObjects = objects.filter(obj => obj.get('overlayId'));  
+    const textObjects = objects.filter(obj => obj.get('textId'));
+    
+    // If objects are already in correct order, no need to reorganize
+    const correctOrder = [...backgroundObjects, ...overlayObjects, ...textObjects];
+    const currentOrder = objects;
+    
+    let needsReordering = false;
+    for (let i = 0; i < correctOrder.length; i++) {
+      if (currentOrder[i] !== correctOrder[i]) {
+        needsReordering = true;
+        break;
+      }
+    }
+    
+    if (needsReordering) {
+      // Remove all objects and re-add in correct order
+      objects.forEach(obj => canvas.remove(obj));
+      correctOrder.forEach(obj => canvas.add(obj));
+      canvas.renderAll();
+    }
+  };
+
+  const restoreImageOverlays = (slideId: string, canvas: fabric.Canvas) => {
+    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
+    if (!slide?.overlays) return;
+
+    slide.overlays.forEach(overlayData => {
+      if (overlayData.imageUrl) {
+        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+          img.set({
+            left: overlayData.position_x,
+            top: overlayData.position_y,
+            angle: overlayData.rotation,
+            scaleX: overlayData.size / 100,
+            scaleY: overlayData.size / 100,
+            originX: 'center',
+            originY: 'center',
+            lockUniScaling: true // Maintain aspect ratio
+          });
+
+          // Disable stretching controls for image overlays
+          img.setControlsVisibility({
+            ml: false, // middle left
+            mb: false, // middle bottom  
+            mr: false, // middle right
+            mt: false, // middle top
+          });
+
+          // Store the overlay ID on the fabric object for later reference
+          img.set('overlayId', overlayData.id);
+
+          // Listen for changes and update data
+          img.on('moving', () => updateOverlayData(overlayData.id, img));
+          img.on('rotating', () => updateOverlayData(overlayData.id, img));
+          img.on('scaling', () => updateOverlayData(overlayData.id, img));
+
+          canvas.add(img);
+        }).catch((error) => {
+          console.warn('Failed to restore image overlay:', overlayData.imageUrl, error);
+        });
+      }
+    });
+
+    canvas.renderAll();
+    
+    // Ensure proper layering after restoring overlays
+    ensureProperLayering(canvas);
   };
 
   const handleSlideSelect = (slideId: string) => {
@@ -266,7 +413,8 @@ export default function SlideshowEditor() {
       duration_seconds: 3,
       created_at: new Date().toISOString(),
       backgroundImage: `https://picsum.photos/1080/1920?random=${Date.now()}`,
-      texts: []
+      texts: [],
+      overlays: []
     };
     
     // In a real app, this would update the slideshow in state/database
@@ -329,7 +477,16 @@ export default function SlideshowEditor() {
       textAlign: 'center',
       originX: 'center',
       originY: 'center',
-      angle: newText.rotation
+      angle: newText.rotation,
+      lockUniScaling: true
+    });
+
+    // Disable stretching controls for text
+    fabricText.setControlsVisibility({
+      ml: false, // middle left
+      mb: false, // middle bottom  
+      mr: false, // middle right
+      mt: false, // middle top
     });
 
     // Store the text ID on the fabric object for later reference
@@ -344,6 +501,9 @@ export default function SlideshowEditor() {
     canvas.add(fabricText);
     canvas.setActiveObject(fabricText);
     canvas.renderAll();
+    
+    // Ensure text is on top layer
+    ensureProperLayering(canvas);
   };
 
   const updateTextData = (textId: string, fabricText: fabric.IText) => {
@@ -359,7 +519,19 @@ export default function SlideshowEditor() {
     }
   };
 
-  const handleImageSelect = (imageUrl: string, imageId: string) => {
+  const updateOverlayData = (overlayId: string, fabricImage: fabric.Image) => {
+    if (!currentSlide?.overlays) return;
+
+    const overlayData = currentSlide.overlays.find(o => o.id === overlayId);
+    if (overlayData) {
+      overlayData.position_x = fabricImage.left || 0;
+      overlayData.position_y = fabricImage.top || 0;
+      overlayData.rotation = fabricImage.angle || 0;
+      overlayData.size = Math.round((fabricImage.scaleX || 1) * 100);
+    }
+  };
+
+  const handleBackgroundImageSelect = (imageUrl: string, imageId: string) => {
     if (!currentSlide) return;
 
     // Update slide data
@@ -393,6 +565,90 @@ export default function SlideshowEditor() {
         canvas.renderAll();
       }).catch((error) => {
         console.warn('Failed to load selected background image:', imageUrl, error);
+      });
+    }
+  };
+
+  const handleImageOverlaySelect = (imageUrl: string, imageId: string) => {
+    if (!currentSlide) return;
+
+    const overlayId = `overlay-${Date.now()}`;
+    
+    // Add to canvas first to get image dimensions
+    const canvas = canvasRefs.current[selectedSlideId];
+    if (canvas) {
+      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+        // Calculate smart sizing based on image dimensions
+        const canvasWidth = 300;
+        const canvasHeight = 533;
+        const targetWidth = canvasWidth * 0.5; // Half the canvas width
+        const targetHeight = canvasHeight * 0.5; // Half the canvas height
+        
+        const imageWidth = img.width || 100;
+        const imageHeight = img.height || 100;
+        
+        // Calculate scale factors for both dimensions
+        const scaleX = targetWidth / imageWidth;
+        const scaleY = targetHeight / imageHeight;
+        
+        // Use the smaller scale factor to ensure image fits within target area
+        const optimalScale = Math.min(scaleX, scaleY);
+        const optimalScalePercent = Math.round(optimalScale * 100);
+
+        // Create overlay data with calculated size
+        const newOverlay: SlideOverlay = {
+          id: overlayId,
+          slide_id: selectedSlideId,
+          image_id: imageId,
+          position_x: 150,
+          position_y: 250,
+          rotation: 0,
+          size: optimalScalePercent,
+          created_at: new Date().toISOString(),
+          imageUrl: imageUrl
+        };
+
+        // Add to slide data
+        if (!currentSlide.overlays) {
+          currentSlide.overlays = [];
+        }
+        currentSlide.overlays.push(newOverlay);
+
+        img.set({
+          left: newOverlay.position_x,
+          top: newOverlay.position_y,
+          angle: newOverlay.rotation,
+          scaleX: optimalScale,
+          scaleY: optimalScale,
+          originX: 'center',
+          originY: 'center',
+          lockUniScaling: true // Maintain aspect ratio
+        });
+
+        // Disable stretching controls for image overlays
+        img.setControlsVisibility({
+          ml: false, // middle left
+          mb: false, // middle bottom  
+          mr: false, // middle right
+          mt: false, // middle top
+        });
+
+        // Store the overlay ID on the fabric object for later reference
+        img.set('overlayId', overlayId);
+
+        // Listen for changes and update data
+        img.on('moving', () => updateOverlayData(overlayId, img));
+        img.on('rotating', () => updateOverlayData(overlayId, img));
+        img.on('scaling', () => updateOverlayData(overlayId, img));
+
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
+        
+        // Ensure proper layering with image overlays below text
+        ensureProperLayering(canvas);
+      }).catch((error) => {
+        console.warn('Failed to load image overlay:', imageUrl, error);
       });
     }
   };
@@ -532,7 +788,7 @@ export default function SlideshowEditor() {
           <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 shadow-lg">
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => setIsImageModalOpen(true)}
+                onClick={() => setIsBackgroundModalOpen(true)}
                 className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
               >
                 Background
@@ -543,7 +799,10 @@ export default function SlideshowEditor() {
               >
                 Text
               </button>
-              <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
+              <button 
+                onClick={() => setIsImageModalOpen(true)}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+              >
                 Image
               </button>
               <div className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)]">
@@ -554,11 +813,20 @@ export default function SlideshowEditor() {
         </div>
       </div>
 
-      {/* Image Selection Modal */}
+      {/* Background Image Selection Modal */}
+      <ImageSelectionModal
+        isOpen={isBackgroundModalOpen}
+        onClose={() => setIsBackgroundModalOpen(false)}
+        onImageSelect={handleBackgroundImageSelect}
+        title="Select Background Image"
+      />
+
+      {/* Image Overlay Selection Modal */}
       <ImageSelectionModal
         isOpen={isImageModalOpen}
         onClose={() => setIsImageModalOpen(false)}
-        onImageSelect={handleImageSelect}
+        onImageSelect={handleImageOverlaySelect}
+        title="Select Image"
       />
     </div>
   );
