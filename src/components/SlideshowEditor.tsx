@@ -1,8 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import * as fabric from 'fabric';
+import ImageSelectionModal from './ImageSelectionModal';
 
 // Database-compatible interfaces
+interface SlideText {
+  id: string;
+  slide_id: string;
+  text: string;
+  position_x: number;
+  position_y: number;
+  size: number;
+  rotation: number;
+  font: string;
+  created_at: string;
+}
+
 interface Slide {
   id: string;
   slideshow_id: string;
@@ -11,6 +25,7 @@ interface Slide {
   created_at: string;
   // Computed properties for UI
   backgroundImage?: string;
+  texts?: SlideText[];
 }
 
 interface Slideshow {
@@ -43,21 +58,24 @@ const mockSlideshows: Slideshow[] = [
         slideshow_id: '1',
         duration_seconds: 3,
         created_at: new Date().toISOString(),
-        backgroundImage: 'https://via.placeholder.com/1080x1920/ff6b6b/ffffff?text=Slide+1' 
+        backgroundImage: 'https://picsum.photos/1080/1920?random=1',
+        texts: []
       },
       { 
         id: 'slide-2', 
         slideshow_id: '1',
         duration_seconds: 3,
         created_at: new Date().toISOString(),
-        backgroundImage: 'https://via.placeholder.com/1080x1920/4ecdc4/ffffff?text=Slide+2' 
+        backgroundImage: 'https://picsum.photos/1080/1920?random=2',
+        texts: []
       },
       { 
         id: 'slide-3', 
         slideshow_id: '1',
         duration_seconds: 3,
         created_at: new Date().toISOString(),
-        backgroundImage: 'https://via.placeholder.com/1080x1920/45b7d1/ffffff?text=Slide+3' 
+        backgroundImage: 'https://picsum.photos/1080/1920?random=3',
+        texts: []
       },
     ]
   },
@@ -75,7 +93,8 @@ const mockSlideshows: Slideshow[] = [
         slideshow_id: '2',
         duration_seconds: 5,
         created_at: new Date().toISOString(),
-        backgroundImage: 'https://via.placeholder.com/1080x1920/96ceb4/ffffff?text=Launch+1' 
+        backgroundImage: 'https://picsum.photos/1080/1920?random=4',
+        texts: []
       },
     ]
   }
@@ -97,12 +116,121 @@ const PlayIcon = () => (
 export default function SlideshowEditor() {
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('1');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('slide-1');
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
+  const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
   const currentSlideshow = mockSlideshows.find(s => s.id === selectedSlideshowId);
   const currentSlide = currentSlideshow?.slides.find(s => s.id === selectedSlideId);
 
+  // Cleanup function for fabric canvases
+  const disposeCanvas = (slideId: string) => {
+    if (canvasRefs.current[slideId]) {
+      canvasRefs.current[slideId].dispose();
+      delete canvasRefs.current[slideId];
+    }
+    if (canvasElementRefs.current[slideId]) {
+      delete canvasElementRefs.current[slideId];
+    }
+  };
+
+  // Cleanup all canvases on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(canvasRefs.current).forEach(slideId => {
+        disposeCanvas(slideId);
+      });
+    };
+  }, []);
+
+  // Initialize fabric canvas for a slide
+  const initializeCanvas = (slideId: string, canvasElement: HTMLCanvasElement) => {
+    // Dispose existing canvas if it exists
+    disposeCanvas(slideId);
+
+    const canvas = new fabric.Canvas(canvasElement, {
+      width: 300,
+      height: 533,
+      backgroundColor: '#ffffff'
+    });
+
+    // Store references
+    canvasRefs.current[slideId] = canvas;
+    canvasElementRefs.current[slideId] = canvasElement;
+
+    // Add background image if exists
+    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
+    if (slide?.backgroundImage) {
+      fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+        img.set({
+          left: 0,
+          top: 0,
+          originX: 'left',
+          originY: 'top',
+          selectable: false,
+          evented: false,
+          isBackground: true
+        });
+        img.scaleToWidth(300);
+        canvas.add(img);
+        canvas.renderAll();
+        
+        // After background is loaded, restore text elements
+        restoreTextElements(slideId, canvas);
+      }).catch((error) => {
+        console.warn('Failed to load background image:', slide.backgroundImage, error);
+        // Continue without background image - canvas will remain white
+        
+        // Still restore text elements even if background fails
+        restoreTextElements(slideId, canvas);
+      });
+    } else {
+      // No background image, just restore text elements
+      restoreTextElements(slideId, canvas);
+    }
+  };
+
+  const restoreTextElements = (slideId: string, canvas: fabric.Canvas) => {
+    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
+    if (!slide?.texts) return;
+
+    slide.texts.forEach(textData => {
+      const fabricText = new fabric.IText(textData.text, {
+        left: textData.position_x,
+        top: textData.position_y,
+        fontFamily: textData.font,
+        fontSize: textData.size,
+        fill: '#000000',
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        angle: textData.rotation
+      });
+
+      // Store the text ID on the fabric object for later reference
+      fabricText.set('textId', textData.id);
+
+      // Listen for text changes and update data
+      fabricText.on('changed', () => updateTextData(textData.id, fabricText));
+      fabricText.on('moving', () => updateTextData(textData.id, fabricText));
+      fabricText.on('rotating', () => updateTextData(textData.id, fabricText));
+      fabricText.on('scaling', () => updateTextData(textData.id, fabricText));
+
+      canvas.add(fabricText);
+    });
+
+    canvas.renderAll();
+  };
+
   const handleSlideSelect = (slideId: string) => {
+    // Dispose canvases from other slides to prevent DOM conflicts
+    Object.keys(canvasRefs.current).forEach(id => {
+      if (id !== slideId) {
+        disposeCanvas(id);
+      }
+    });
+
     setSelectedSlideId(slideId);
     
     // Manually center the slide within the fixed container
@@ -137,7 +265,8 @@ export default function SlideshowEditor() {
       slideshow_id: currentSlideshow.id,
       duration_seconds: 3,
       created_at: new Date().toISOString(),
-      backgroundImage: `https://via.placeholder.com/1080x1920/ddd/888?text=New+Slide`
+      backgroundImage: `https://picsum.photos/1080/1920?random=${Date.now()}`,
+      texts: []
     };
     
     // In a real app, this would update the slideshow in state/database
@@ -165,6 +294,107 @@ export default function SlideshowEditor() {
         }
       }
     }, 50);
+  };
+
+  const handleAddText = () => {
+    const canvas = canvasRefs.current[selectedSlideId];
+    if (!canvas || !currentSlide) return;
+
+    const textId = `text-${Date.now()}`;
+    const newText: SlideText = {
+      id: textId,
+      slide_id: selectedSlideId,
+      text: 'text',
+      position_x: 150,
+      position_y: 250,
+      size: 24,
+      rotation: 0,
+      font: 'Arial',
+      created_at: new Date().toISOString()
+    };
+
+    // Add to slide data
+    if (!currentSlide.texts) {
+      currentSlide.texts = [];
+    }
+    currentSlide.texts.push(newText);
+
+    // Create fabric text object
+    const fabricText = new fabric.IText(newText.text, {
+      left: newText.position_x,
+      top: newText.position_y,
+      fontFamily: newText.font,
+      fontSize: newText.size,
+      fill: '#000000',
+      textAlign: 'center',
+      originX: 'center',
+      originY: 'center',
+      angle: newText.rotation
+    });
+
+    // Store the text ID on the fabric object for later reference
+    fabricText.set('textId', textId);
+
+    // Listen for text changes and update data
+    fabricText.on('changed', () => updateTextData(textId, fabricText));
+    fabricText.on('moving', () => updateTextData(textId, fabricText));
+    fabricText.on('rotating', () => updateTextData(textId, fabricText));
+    fabricText.on('scaling', () => updateTextData(textId, fabricText));
+
+    canvas.add(fabricText);
+    canvas.setActiveObject(fabricText);
+    canvas.renderAll();
+  };
+
+  const updateTextData = (textId: string, fabricText: fabric.IText) => {
+    if (!currentSlide?.texts) return;
+
+    const textData = currentSlide.texts.find(t => t.id === textId);
+    if (textData) {
+      textData.text = fabricText.text || 'text';
+      textData.position_x = fabricText.left || 0;
+      textData.position_y = fabricText.top || 0;
+      textData.size = fabricText.fontSize || 24;
+      textData.rotation = fabricText.angle || 0;
+    }
+  };
+
+  const handleImageSelect = (imageUrl: string, imageId: string) => {
+    if (!currentSlide) return;
+
+    // Update slide data
+    currentSlide.backgroundImage = imageUrl;
+    currentSlide.background_image_id = imageId;
+
+    // Update canvas background
+    const canvas = canvasRefs.current[selectedSlideId];
+    if (canvas) {
+      // Clear existing background images
+      const objects = canvas.getObjects();
+      objects.forEach(obj => {
+        if (obj.get('isBackground')) {
+          canvas.remove(obj);
+        }
+      });
+
+      // Add new background image
+      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+        img.set({
+          left: 0,
+          top: 0,
+          originX: 'left',
+          originY: 'top',
+          selectable: false,
+          evented: false,
+          isBackground: true
+        });
+        img.scaleToWidth(300);
+        canvas.add(img);
+        canvas.renderAll();
+      }).catch((error) => {
+        console.warn('Failed to load selected background image:', imageUrl, error);
+      });
+    }
   };
 
   return (
@@ -237,21 +467,36 @@ export default function SlideshowEditor() {
                       selectedSlideId === slide.id
                         ? 'border-[var(--color-primary)]'
                         : 'border-[var(--color-border)]'
-                    } ${selectedSlideId === slide.id ? '' : 'grayscale'} bg-white`}>
+                    } ${selectedSlideId === slide.id ? '' : ''} bg-white`}>
                       
-                      {slide.backgroundImage ? (
-                        <img
-                          src={slide.backgroundImage}
-                          alt={`Slide ${index + 1}`}
-                          className="w-full h-full object-cover"
+                      {selectedSlideId === slide.id ? (
+                        <canvas
+                          key={`canvas-${slide.id}`}
+                          ref={(el) => {
+                            if (el && !canvasRefs.current[slide.id]) {
+                              // Use a small delay to ensure React has fully mounted the element
+                              setTimeout(() => initializeCanvas(slide.id, el), 10);
+                            }
+                          }}
+                          width="300"
+                          height="533"
+                          className="w-full h-full"
                         />
                       ) : (
-                        <div className="w-full h-full bg-[var(--color-bg-tertiary)] flex items-center justify-center text-[var(--color-text-muted)]">
-                          <div className="text-center">
-                            <PlayIcon />
-                            <p className="mt-2">Empty Slide</p>
+                        slide.backgroundImage ? (
+                          <img
+                            src={slide.backgroundImage}
+                            alt={`Slide ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-[var(--color-bg-tertiary)] flex items-center justify-center text-[var(--color-text-muted)]">
+                            <div className="text-center">
+                              <PlayIcon />
+                              <p className="mt-2">Empty Slide</p>
+                            </div>
                           </div>
-                        </div>
+                        )
                       )}
 
                       {/* Slide Number */}
@@ -286,10 +531,16 @@ export default function SlideshowEditor() {
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
           <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 shadow-lg">
             <div className="flex items-center gap-4">
-              <button className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors">
+              <button 
+                onClick={() => setIsImageModalOpen(true)}
+                className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+              >
                 Background
               </button>
-              <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
+              <button 
+                onClick={handleAddText}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+              >
                 Text
               </button>
               <button className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors">
@@ -302,6 +553,13 @@ export default function SlideshowEditor() {
           </div>
         </div>
       </div>
+
+      {/* Image Selection Modal */}
+      <ImageSelectionModal
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        onImageSelect={handleImageSelect}
+      />
     </div>
   );
 } 
