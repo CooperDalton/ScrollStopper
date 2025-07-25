@@ -135,12 +135,26 @@ export default function SlideshowEditor() {
     // In a real app, this would update the slideshow in state/database
     currentSlideshow.slides.push(newSlide);
     setSelectedSlideId(newSlideId);
+    
+    // Scroll the new slide to center
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlideId}"]`);
+        if (slideElement) {
+          slideElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center'
+          });
+        }
+      }
+    }, 100); // Small delay to allow for DOM update
   };
 
   return (
     <div className="h-screen bg-[var(--color-bg)] flex">
-      {/* Left Sidebar */}
-      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col">
+      {/* Left Sidebar - Fixed Position */}
+      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col fixed left-0 top-0 h-full z-10">
         {/* My Slideshows Header */}
         <div className="p-6 border-b border-[var(--color-border)]">
           <h2 className="text-xl font-bold text-[var(--color-text)]">My Slideshows</h2>
@@ -180,14 +194,14 @@ export default function SlideshowEditor() {
       </div>
 
       {/* Main Center Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col ml-80">
         {/* Canvas and Slides Area */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full h-[600px] flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full h-[650px] flex items-center justify-center">
             {/* Horizontal Slides Row */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-4 w-full h-full" style={{ scrollSnapType: 'x mandatory', paddingLeft: '50%', paddingRight: '50%' }} ref={scrollContainerRef}>
+            <div className="flex items-center gap-1 overflow-x-auto pb-4 w-full h-full scrollbar-hide" style={{ scrollSnapType: 'x mandatory', paddingLeft: '50%', paddingRight: '50%' }} ref={scrollContainerRef}>
               {currentSlideshow?.slides.map((slide, index) => (
-                <div key={slide.id} className="flex-shrink-0 h-full flex items-center justify-center" style={{ scrollSnapAlign: 'center', minWidth: '350px' }} data-slide-id={slide.id}>
+                <div key={slide.id} className="flex-shrink-0 h-full flex items-center justify-center" style={{ scrollSnapAlign: 'center', minWidth: '250px' }} data-slide-id={slide.id}>
                   <button
                     onClick={() => handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
@@ -202,7 +216,7 @@ export default function SlideshowEditor() {
                         : 'w-[200px] h-[356px]' // Smaller non-selected slides
                     } rounded-2xl overflow-hidden border-4 ${
                       selectedSlideId === slide.id
-                        ? 'border-[var(--color-primary)] shadow-2xl'
+                        ? 'border-[var(--color-primary)]'
                         : 'border-[var(--color-border)]'
                     } ${selectedSlideId === slide.id ? '' : 'grayscale'} bg-white`}>
                       
@@ -231,7 +245,7 @@ export default function SlideshowEditor() {
               ))}
 
               {/* Add Slide Button */}
-              <div className="flex-shrink-0 h-full flex items-center justify-center" style={{ minWidth: '350px' }}>
+              <div className="flex-shrink-0 h-full flex items-center justify-center" style={{ minWidth: '320px' }}>
                 <button
                   onClick={handleAddSlide}
                   className="w-[200px] h-[356px] bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
