@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import DashboardLayout from '../components/DashboardLayout';
+import DashboardLayout from '../../components/DashboardLayout';
 import ProductModal from '../../components/ProductModal';
 import { Product } from '@/lib/products';
 import { useAuth } from '@/hooks/useAuth';

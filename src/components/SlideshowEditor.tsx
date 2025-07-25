@@ -152,9 +152,9 @@ export default function SlideshowEditor() {
   };
 
   return (
-    <div className="h-screen bg-[var(--color-bg)] flex">
-      {/* Left Sidebar - Fixed Position */}
-      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col fixed left-0 top-0 h-full z-10">
+    <div className="flex h-full bg-[var(--color-bg)]">
+      {/* Left Sidebar - Slideshows */}
+      <div className="w-80 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col">
         {/* My Slideshows Header */}
         <div className="p-6 border-b border-[var(--color-border)]">
           <h2 className="text-xl font-bold text-[var(--color-text)]">My Slideshows</h2>
@@ -194,7 +194,7 @@ export default function SlideshowEditor() {
       </div>
 
       {/* Main Center Area */}
-      <div className="flex-1 flex flex-col ml-80">
+      <div className="flex-1 flex flex-col">
         {/* Canvas and Slides Area */}
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-[650px] flex items-center justify-center">

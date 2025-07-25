@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import DashboardLayout from '../components/DashboardLayout';
+import DashboardLayout from '../../components/DashboardLayout';
 import CollectionModal from '../../components/CollectionModal';
 import ImageUploadModal from '../../components/ImageUploadModal';
 import { useCollections } from '@/hooks/useCollections';
