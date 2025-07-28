@@ -31,8 +31,34 @@ const TrashIcon = () => (
   </svg>
 );
 
+const BackgroundIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+    <circle cx="9" cy="9" r="2"/>
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+  </svg>
+);
+
+const TextIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16"/>
+    <path d="M15.697 14h5.606"/>
+    <path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"/>
+    <path d="M3.304 13h6.392"/>
+  </svg>
+);
+
+const ImageIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 22H4a2 2 0 0 1-2-2V6"/>
+    <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/>
+    <circle cx="12" cy="8" r="2"/>
+    <rect width="16" height="16" x="6" y="2" rx="2"/>
+  </svg>
+);
+
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, refetch } = useSlideshows();
+  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, refetch } = useSlideshows();
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -471,6 +497,22 @@ export default function SlideshowEditor() {
       
       // Refresh the data to restore the correct state since database operation failed
       await refetch();
+    }
+  };
+
+  const handleDurationClick = async () => {
+    if (!currentSlide) return;
+
+    // Cycle through durations 2, 3, 4, 5, 6, then back to 2
+    const currentDuration = currentSlide.duration_seconds || 3;
+    const nextDuration = currentDuration >= 6 ? 2 : currentDuration + 1;
+
+    try {
+      await updateSlideDuration(currentSlide.id, nextDuration);
+      console.log(`Slide duration updated to ${nextDuration}s`);
+    } catch (error) {
+      console.error('Error updating slide duration:', error);
+      alert('Failed to update slide duration. Please try again.');
     }
   };
 
@@ -936,25 +978,32 @@ export default function SlideshowEditor() {
             <div className="flex items-center gap-4">
               <button 
                 onClick={() => setIsBackgroundModalOpen(true)}
-                className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                title="Background"
               >
-                Background
+                <BackgroundIcon />
               </button>
               <button 
                 onClick={handleAddText}
-                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                className="p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                title="Add Text"
               >
-                Text
+                <TextIcon />
               </button>
               <button 
                 onClick={() => setIsImageModalOpen(true)}
-                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                className="p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                title="Add Image"
               >
-                Image
+                <ImageIcon />
               </button>
-              <div className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)]">
+              <button 
+                onClick={handleDurationClick}
+                className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                title="Slide Duration"
+              >
                 {currentSlide?.duration_seconds || 3}s
-              </div>
+              </button>
             </div>
           </div>
         </div>

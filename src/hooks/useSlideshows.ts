@@ -573,6 +573,65 @@ export function useSlideshows() {
     }
   }
 
+  const updateSlideDuration = async (slideId: string, durationSeconds: number) => {
+    if (!user) {
+      throw new Error('User must be authenticated to update slide duration')
+    }
+
+    try {
+      setError(null)
+
+      // Store original duration for potential rollback
+      const originalDuration = slideshows
+        .flatMap(slideshow => slideshow.slides)
+        .find(slide => slide.id === slideId)?.duration_seconds || 3
+
+      // Immediately update local state for instant UI feedback
+      setSlideshows(prev => prev.map(slideshow => ({
+        ...slideshow,
+        slides: slideshow.slides.map(slide => {
+          if (slide.id === slideId) {
+            return {
+              ...slide,
+              duration_seconds: durationSeconds
+            }
+          }
+          return slide
+        })
+      })))
+
+      // Now update the database in the background
+      const { error: updateError } = await supabase
+        .from('slides')
+        .update({ duration_seconds: durationSeconds })
+        .eq('id', slideId)
+
+      if (updateError) {
+        // Rollback local state on database error
+        setSlideshows(prev => prev.map(slideshow => ({
+          ...slideshow,
+          slides: slideshow.slides.map(slide => {
+            if (slide.id === slideId) {
+              return {
+                ...slide,
+                duration_seconds: originalDuration
+              }
+            }
+            return slide
+          })
+        })))
+        throw updateError
+      }
+
+      return true
+    } catch (err) {
+      console.error('Error updating slide duration:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update slide duration'
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    }
+  }
+
   return {
     slideshows,
     loading,
@@ -583,6 +642,7 @@ export function useSlideshows() {
     saveSlideTexts,
     saveSlideOverlays,
     updateSlideBackground,
+    updateSlideDuration,
     refetch: fetchSlideshows
   }
 } 
