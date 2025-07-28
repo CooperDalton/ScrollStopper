@@ -3,121 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as fabric from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
-
-// Database-compatible interfaces
-interface SlideText {
-  id: string;
-  slide_id: string;
-  text: string;
-  position_x: number;
-  position_y: number;
-  size: number;
-  rotation: number;
-  font: string;
-  created_at: string;
-}
-
-interface SlideOverlay {
-  id: string;
-  slide_id: string;
-  image_id: string;
-  crop?: any; // jsonb in database
-  position_x: number;
-  position_y: number;
-  rotation: number;
-  size: number;
-  created_at: string;
-  // Computed properties for UI
-  imageUrl?: string;
-}
-
-interface Slide {
-  id: string;
-  slideshow_id: string;
-  background_image_id?: string;
-  duration_seconds: number;
-  created_at: string;
-  // Computed properties for UI
-  backgroundImage?: string;
-  texts?: SlideText[];
-  overlays?: SlideOverlay[];
-}
-
-interface Slideshow {
-  id: string;
-  user_id: string;
-  product_id?: string;
-  caption?: string;
-  status: string;
-  upload_status: string;
-  tik_tok_post_id?: string;
-  frame_paths?: string[];
-  created_at: string;
-  // Computed properties for UI
-  slides: Slide[];
-}
-
-// Mock data
-const mockSlideshows: Slideshow[] = [
-  {
-    id: '1',
-    user_id: 'user-1',
-    product_id: 'product-1',
-    caption: 'Summer Collection',
-    status: 'draft',
-    upload_status: 'pending',
-    created_at: new Date().toISOString(),
-    slides: [
-      { 
-        id: 'slide-1', 
-        slideshow_id: '1',
-        duration_seconds: 3,
-        created_at: new Date().toISOString(),
-        backgroundImage: 'https://picsum.photos/1080/1920?random=1',
-        texts: [],
-        overlays: []
-      },
-      { 
-        id: 'slide-2', 
-        slideshow_id: '1',
-        duration_seconds: 3,
-        created_at: new Date().toISOString(),
-        backgroundImage: 'https://picsum.photos/1080/1920?random=2',
-        texts: [],
-        overlays: []
-      },
-      { 
-        id: 'slide-3', 
-        slideshow_id: '1',
-        duration_seconds: 3,
-        created_at: new Date().toISOString(),
-        backgroundImage: 'https://picsum.photos/1080/1920?random=3',
-        texts: [],
-        overlays: []
-      },
-    ]
-  },
-  {
-    id: '2',
-    user_id: 'user-1',
-    product_id: 'product-2',
-    caption: 'Product Launch',
-    status: 'draft',
-    upload_status: 'pending',
-    created_at: new Date().toISOString(),
-    slides: [
-      { 
-        id: 'slide-4', 
-        slideshow_id: '2',
-        duration_seconds: 5,
-        created_at: new Date().toISOString(),
-        backgroundImage: 'https://picsum.photos/1080/1920?random=4',
-        texts: [],
-        overlays: []
-      },
-    ]
-  }
-];
+import { useSlideshows } from '@/hooks/useSlideshows';
+import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 
 // Icons
 const PlusIcon = () => (
@@ -132,22 +19,53 @@ const PlayIcon = () => (
   </svg>
 );
 
+const SaveIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+  </svg>
+);
+
 export default function SlideshowEditor() {
-  const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('1');
-  const [selectedSlideId, setSelectedSlideId] = useState<string>('slide-1');
+  const { slideshows, loading, error, createSlideshow, addSlide, saveSlideTexts, updateSlideBackground } = useSlideshows();
+  const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
+  const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
-  const currentSlideshow = mockSlideshows.find(s => s.id === selectedSlideshowId);
-  const currentSlide = currentSlideshow?.slides.find(s => s.id === selectedSlideId);
+  const currentSlideshow = slideshows.find((s: Slideshow) => s.id === selectedSlideshowId);
+  const currentSlide = currentSlideshow?.slides.find((s: Slide) => s.id === selectedSlideId);
+
+  // Set default selected slideshow and slide when slideshows load
+  useEffect(() => {
+    if (slideshows.length > 0 && !selectedSlideshowId) {
+      const firstSlideshow = slideshows[0];
+      setSelectedSlideshowId(firstSlideshow.id);
+      if (firstSlideshow.slides.length > 0) {
+        setSelectedSlideId(firstSlideshow.slides[0].id);
+      }
+    }
+  }, [slideshows, selectedSlideshowId]);
+
+  // Reset unsaved changes when switching slides
+  useEffect(() => {
+    setHasUnsavedChanges(false);
+  }, [selectedSlideId]);
 
   // Cleanup function for fabric canvases
   const disposeCanvas = (slideId: string) => {
     if (canvasRefs.current[slideId]) {
-      canvasRefs.current[slideId].dispose();
+      try {
+        canvasRefs.current[slideId].dispose();
+      } catch (error) {
+        // Ignore disposal errors - canvas might already be disposed
+        console.warn('Canvas disposal warning:', error);
+      }
       delete canvasRefs.current[slideId];
     }
     if (canvasElementRefs.current[slideId]) {
@@ -164,6 +82,19 @@ export default function SlideshowEditor() {
     };
   }, []);
 
+  // Cleanup canvases when slideshows change to prevent stale references
+  useEffect(() => {
+    const currentSlideIds = new Set(slideshows.flatMap(s => s.slides.map(slide => slide.id)));
+    const canvasSlideIds = Object.keys(canvasRefs.current);
+    
+    // Dispose canvases for slides that no longer exist
+    canvasSlideIds.forEach(slideId => {
+      if (!currentSlideIds.has(slideId)) {
+        disposeCanvas(slideId);
+      }
+    });
+  }, [slideshows]);
+
   // Keyboard event listener for delete functionality
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -172,6 +103,16 @@ export default function SlideshowEditor() {
         if (canvas) {
           const activeObject = canvas.getActiveObject();
           if (activeObject && !activeObject.get('isBackground')) {
+            // Check if it's a text object in editing mode
+            if (activeObject.get('textId')) {
+              // For text objects, only delete if not in editing mode
+              const textObject = activeObject as fabric.IText;
+              if (textObject.isEditing) {
+                // User is editing text content, don't delete the text object
+                return;
+              }
+            }
+
             // Remove from canvas
             canvas.remove(activeObject);
             canvas.renderAll();
@@ -182,12 +123,16 @@ export default function SlideshowEditor() {
               const textId = activeObject.get('textId');
               if (currentSlide?.texts) {
                 currentSlide.texts = currentSlide.texts.filter(t => t.id !== textId);
+                // Mark as having unsaved changes
+                setHasUnsavedChanges(true);
               }
             } else if (activeObject.get('overlayId')) {
               // It's an image overlay
               const overlayId = activeObject.get('overlayId');
               if (currentSlide?.overlays) {
                 currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
+                // Mark as having unsaved changes (for future overlay saving)
+                setHasUnsavedChanges(true);
               }
             }
           }
@@ -201,71 +146,83 @@ export default function SlideshowEditor() {
 
   // Initialize fabric canvas for a slide
   const initializeCanvas = (slideId: string, canvasElement: HTMLCanvasElement) => {
+    // Check if canvas element is still in DOM
+    if (!canvasElement || !canvasElement.parentNode) {
+      console.warn('Canvas element not in DOM, skipping initialization');
+      return;
+    }
+
     // Dispose existing canvas if it exists
     disposeCanvas(slideId);
 
-    const canvas = new fabric.Canvas(canvasElement, {
-      width: 300,
-      height: 533,
-      backgroundColor: '#ffffff'
-    });
-
-
-
-    // Store references
-    canvasRefs.current[slideId] = canvas;
-    canvasElementRefs.current[slideId] = canvasElement;
-
-    // Add background image if exists
-    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
-    if (slide?.backgroundImage) {
-      fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
-        img.set({
-          left: 0,
-          top: 0,
-          originX: 'left',
-          originY: 'top',
-          selectable: false,
-          evented: false,
-          isBackground: true
-        });
-        img.scaleToWidth(300);
-        canvas.add(img);
-        canvas.renderAll();
-        
-        // After background is loaded, restore text elements and overlays
-        restoreTextElements(slideId, canvas);
-        restoreImageOverlays(slideId, canvas);
-      }).catch((error) => {
-        console.warn('Failed to load background image:', slide.backgroundImage, error);
-        // Continue without background image - canvas will remain white
-        
-        // Still restore text elements and overlays even if background fails
-        restoreTextElements(slideId, canvas);
-        restoreImageOverlays(slideId, canvas);
+    try {
+      const canvas = new fabric.Canvas(canvasElement, {
+        width: 300,
+        height: 533,
+        backgroundColor: '#ffffff'
       });
-    } else {
-      // No background image, just restore text elements and overlays
-      restoreTextElements(slideId, canvas);
-      restoreImageOverlays(slideId, canvas);
+
+      // Store references
+      canvasRefs.current[slideId] = canvas;
+      canvasElementRefs.current[slideId] = canvasElement;
+
+      // Add background image if exists
+      const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
+      if (slide?.backgroundImage) {
+        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+          img.set({
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top',
+            selectable: false,
+            evented: false,
+            isBackground: true
+          });
+          img.scaleToWidth(300);
+          canvas.add(img);
+          canvas.renderAll();
+          
+          // After background is loaded, restore text elements and overlays
+          restoreTextElements(slideId, canvas);
+          restoreImageOverlays(slideId, canvas);
+        }).catch((error) => {
+          console.warn('Failed to load background image:', slide.backgroundImage, error);
+          // Continue without background image - canvas will remain white
+          
+          // Still restore text elements and overlays even if background fails
+          restoreTextElements(slideId, canvas);
+          restoreImageOverlays(slideId, canvas);
+        });
+      } else {
+        // No background image, just restore text elements and overlays
+        restoreTextElements(slideId, canvas);
+        restoreImageOverlays(slideId, canvas);
+      }
+    } catch (error) {
+      console.error('Failed to initialize canvas:', error);
+      // Clean up any partial initialization
+      disposeCanvas(slideId);
     }
   };
 
   const restoreTextElements = (slideId: string, canvas: fabric.Canvas) => {
-    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
+    const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
     if (!slide?.texts) return;
 
-    slide.texts.forEach(textData => {
+    slide.texts.forEach((textData: SlideText) => {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
         fontFamily: textData.font,
-        fontSize: textData.size,
+        fontSize: textData.size, // This is now the effective font size
         fill: '#000000',
         textAlign: 'center',
         originX: 'center',
         originY: 'center',
         angle: textData.rotation,
+        scaleX: 1, // Reset scale to 1 since we're using effective fontSize
+        scaleY: 1, // Reset scale to 1 since we're using effective fontSize
         lockUniScaling: true
       });
 
@@ -324,10 +281,10 @@ export default function SlideshowEditor() {
   };
 
   const restoreImageOverlays = (slideId: string, canvas: fabric.Canvas) => {
-    const slide = currentSlideshow?.slides.find(s => s.id === slideId);
+    const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
     if (!slide?.overlays) return;
 
-    slide.overlays.forEach(overlayData => {
+    slide.overlays.forEach((overlayData: SlideOverlay) => {
       if (overlayData.imageUrl) {
         fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
           img.set({
@@ -403,45 +360,44 @@ export default function SlideshowEditor() {
     }, 50);
   };
 
-  const handleAddSlide = () => {
+  const handleAddSlide = async () => {
     if (!currentSlideshow) return;
     
-    const newSlideId = `slide-${Date.now()}`;
-    const newSlide: Slide = {
-      id: newSlideId,
-      slideshow_id: currentSlideshow.id,
-      duration_seconds: 3,
-      created_at: new Date().toISOString(),
-      backgroundImage: `https://picsum.photos/1080/1920?random=${Date.now()}`,
-      texts: [],
-      overlays: []
-    };
-    
-    // In a real app, this would update the slideshow in state/database
-    currentSlideshow.slides.push(newSlide);
-    setSelectedSlideId(newSlideId);
-    
-    // Manually center the new slide within the fixed container
-    setTimeout(() => {
-      if (scrollContainerRef.current) {
-        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlideId}"]`) as HTMLElement;
-        if (slideElement) {
-          const container = scrollContainerRef.current;
-          const containerWidth = container.clientWidth;
-          const slideLeft = slideElement.offsetLeft;
-          const slideWidth = slideElement.offsetWidth;
-          
-          // Calculate scroll position to center the slide within the fixed container
-          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
-          
-          // Smooth scroll to the calculated position
-          container.scrollTo({
-            left: scrollLeft,
-            behavior: 'smooth'
-          });
+    try {
+      // Dispose all canvases before state change to prevent DOM conflicts
+      Object.keys(canvasRefs.current).forEach(slideId => {
+        disposeCanvas(slideId);
+      });
+      
+      // Add slide to database and update state
+      const newSlide = await addSlide(currentSlideshow.id);
+      setSelectedSlideId(newSlide.id);
+      
+      // Manually center the new slide within the fixed container
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlide.id}"]`) as HTMLElement;
+          if (slideElement) {
+            const container = scrollContainerRef.current;
+            const containerWidth = container.clientWidth;
+            const slideLeft = slideElement.offsetLeft;
+            const slideWidth = slideElement.offsetWidth;
+            
+            // Calculate scroll position to center the slide within the fixed container
+            const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+            
+            // Smooth scroll to the calculated position
+            container.scrollTo({
+              left: scrollLeft,
+              behavior: 'smooth'
+            });
+          }
         }
-      }
-    }, 50);
+      }, 100); // Increased delay to allow for re-render
+    } catch (error) {
+      console.error('Error adding slide:', error);
+      alert('Failed to add slide. Please try again.');
+    }
   };
 
   const handleAddText = () => {
@@ -466,6 +422,9 @@ export default function SlideshowEditor() {
       currentSlide.texts = [];
     }
     currentSlide.texts.push(newText);
+    
+    // Mark as having unsaved changes
+    setHasUnsavedChanges(true);
 
     // Create fabric text object
     const fabricText = new fabric.IText(newText.text, {
@@ -514,8 +473,14 @@ export default function SlideshowEditor() {
       textData.text = fabricText.text || 'text';
       textData.position_x = fabricText.left || 0;
       textData.position_y = fabricText.top || 0;
-      textData.size = fabricText.fontSize || 24;
+      // For text, we need to account for both fontSize and scaling
+      // When users resize by dragging corners, Fabric.js applies scaleX/scaleY
+      const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
+      textData.size = Math.round(effectiveFontSize);
       textData.rotation = fabricText.angle || 0;
+      
+      // Mark as having unsaved changes
+      setHasUnsavedChanges(true);
     }
   };
 
@@ -531,41 +496,47 @@ export default function SlideshowEditor() {
     }
   };
 
-  const handleBackgroundImageSelect = (imageUrl: string, imageId: string) => {
+  const handleBackgroundImageSelect = async (imageUrl: string, imageId: string) => {
     if (!currentSlide) return;
 
-    // Update slide data
-    currentSlide.backgroundImage = imageUrl;
-    currentSlide.background_image_id = imageId;
+    try {
+      // Automatically sync to Supabase
+      await updateSlideBackground(selectedSlideId, imageId);
 
-    // Update canvas background
-    const canvas = canvasRefs.current[selectedSlideId];
-    if (canvas) {
-      // Clear existing background images
-      const objects = canvas.getObjects();
-      objects.forEach(obj => {
-        if (obj.get('isBackground')) {
-          canvas.remove(obj);
-        }
-      });
-
-      // Add new background image
-      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
-        img.set({
-          left: 0,
-          top: 0,
-          originX: 'left',
-          originY: 'top',
-          selectable: false,
-          evented: false,
-          isBackground: true
+      // Update canvas background
+      const canvas = canvasRefs.current[selectedSlideId];
+      if (canvas) {
+        // Clear existing background images
+        const objects = canvas.getObjects();
+        objects.forEach(obj => {
+          if (obj.get('isBackground')) {
+            canvas.remove(obj);
+          }
         });
-        img.scaleToWidth(300);
-        canvas.add(img);
-        canvas.renderAll();
-      }).catch((error) => {
-        console.warn('Failed to load selected background image:', imageUrl, error);
-      });
+
+        // Add new background image
+        fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+          img.set({
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top',
+            selectable: false,
+            evented: false,
+            isBackground: true
+          });
+          img.scaleToWidth(300);
+          canvas.add(img);
+          canvas.renderAll();
+        }).catch((error) => {
+          console.warn('Failed to load selected background image:', imageUrl, error);
+        });
+      }
+
+      console.log('Background image updated successfully');
+    } catch (error) {
+      console.error('Failed to update background image:', error);
+      alert('Failed to update background image. Please try again.');
     }
   };
 
@@ -653,6 +624,45 @@ export default function SlideshowEditor() {
     }
   };
 
+  const handleSave = async () => {
+    if (!currentSlide || !selectedSlideId) return;
+
+    try {
+      setIsSaving(true);
+      
+      // Save text data to Supabase
+      await saveSlideTexts(selectedSlideId, currentSlide.texts || []);
+      
+      // Mark as saved
+      setHasUnsavedChanges(false);
+      
+      console.log('Slide saved successfully');
+    } catch (error) {
+      console.error('Failed to save slide:', error);
+      alert('Failed to save slide. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateSlideshow = async () => {
+    try {
+      setIsCreating(true);
+      const newSlideshow = await createSlideshow();
+      
+      // Select the newly created slideshow and its first slide
+      setSelectedSlideshowId(newSlideshow.id);
+      if (newSlideshow.slides.length > 0) {
+        setSelectedSlideId(newSlideshow.slides[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to create slideshow:', err);
+      alert('Failed to create slideshow. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       {/* Left Sidebar - Slideshows */}
@@ -662,10 +672,35 @@ export default function SlideshowEditor() {
           <h2 className="text-xl font-bold text-[var(--color-text)]">My Slideshows</h2>
         </div>
 
+        {/* Create Slideshow Button */}
+        <div className="p-4 border-b border-[var(--color-border)]">
+          <button
+            onClick={handleCreateSlideshow}
+            disabled={isCreating}
+            className="w-full flex items-center justify-center gap-2 p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <PlusIcon />
+            {isCreating ? 'Creating...' : 'New Slideshow'}
+          </button>
+        </div>
+
         {/* Slideshows List */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-3">
-            {mockSlideshows.map((slideshow) => (
+          {loading ? (
+            <div className="text-center text-[var(--color-text-muted)] py-8">
+              Loading slideshows...
+            </div>
+          ) : error ? (
+            <div className="text-center text-red-500 py-8">
+              Error: {error}
+            </div>
+          ) : slideshows.length === 0 ? (
+            <div className="text-center text-[var(--color-text-muted)] py-8">
+              No slideshows yet. Create your first one!
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {slideshows.map((slideshow: Slideshow) => (
               <button
                 key={slideshow.id}
                 onClick={() => {
@@ -690,8 +725,9 @@ export default function SlideshowEditor() {
                   </div>
                 </div>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -699,14 +735,30 @@ export default function SlideshowEditor() {
       <div className="flex-1 flex flex-col overflow-hidden relative">
         {/* Canvas and Slides Area - Dynamic width container */}
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full h-full max-h-[650px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+          <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+            
+            
             {/* Horizontal Slides Row - Container with fixed width */}
             <div className="absolute inset-0 flex items-center gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth" ref={scrollContainerRef}>
               {/* Left spacer to allow centering of first slide */}
-              <div className="flex-shrink-0 w-[400px]"></div>
+              <div className="flex-shrink-0 w-[500px]"></div>
               
               {currentSlideshow?.slides.map((slide, index) => (
-                <div key={slide.id} className="flex-shrink-0 flex items-center justify-center" data-slide-id={slide.id}>
+                <div key={slide.id} className="flex-shrink-0 flex items-center justify-center relative" data-slide-id={slide.id}>
+                  {/* Save Button - Only shown for selected slide with unsaved changes */}
+                  {selectedSlideId === slide.id && hasUnsavedChanges && (
+                    <div className="absolute -top-19 right-55 z-20">
+                      <button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-xl shadow-lg transition-colors font-medium"
+                      >
+                        <SaveIcon />
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  )}
+                  
                   <button
                     onClick={() => handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
@@ -730,8 +782,13 @@ export default function SlideshowEditor() {
                           key={`canvas-${slide.id}`}
                           ref={(el) => {
                             if (el && !canvasRefs.current[slide.id]) {
-                              // Use a small delay to ensure React has fully mounted the element
-                              setTimeout(() => initializeCanvas(slide.id, el), 10);
+                              // Use requestAnimationFrame to ensure DOM is ready
+                              requestAnimationFrame(() => {
+                                // Double-check the element is still in DOM before initializing
+                                if (el.parentNode && !canvasRefs.current[slide.id]) {
+                                  initializeCanvas(slide.id, el);
+                                }
+                              });
                             }
                           }}
                           width="300"
@@ -754,11 +811,6 @@ export default function SlideshowEditor() {
                           </div>
                         )
                       )}
-
-                      {/* Slide Number */}
-                      <div className="absolute bottom-3 left-3 bg-black bg-opacity-80 text-white text-sm px-2 py-1 rounded-full">
-                        {index + 1}
-                      </div>
                     </div>
                   </button>
                 </div>
