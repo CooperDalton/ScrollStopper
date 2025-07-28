@@ -67,9 +67,14 @@ export default function SlideshowEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [localSlideshows, setLocalSlideshows] = useState<Slideshow[]>([]);
+  const [canvasReadyStates, setCanvasReadyStates] = useState<{[key: string]: boolean}>({});
+  const [isDeletingSlide, setIsDeletingSlide] = useState(false);
+  const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
+  const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
+  const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
   // Use local slideshows if available, otherwise use the ones from the hook
   const displaySlideshows = localSlideshows.length > 0 ? localSlideshows : slideshows;
@@ -113,9 +118,29 @@ export default function SlideshowEditor() {
 
   // Cleanup function for fabric canvases
   const disposeCanvas = (slideId: string) => {
+    // Don't dispose during slide deletion to avoid DOM conflicts
+    if (isDeletingSlide) {
+      delete canvasRefs.current[slideId];
+      delete canvasElementRefs.current[slideId];
+      return;
+    }
+
     if (canvasRefs.current[slideId]) {
       try {
-        canvasRefs.current[slideId].dispose();
+        const canvas = canvasRefs.current[slideId];
+        // Check if canvas element is still in DOM before disposing
+        const canvasElement = canvasElementRefs.current[slideId];
+        if (canvasElement && canvasElement.parentNode && canvasElement.isConnected) {
+          canvas.dispose();
+        } else {
+          // Canvas element already removed from DOM, just clear fabric objects
+          try {
+            canvas.clear();
+          } catch (clearError) {
+            // Even clearing might fail if canvas is in bad state
+            console.warn('Canvas clear warning:', clearError);
+          }
+        }
       } catch (error) {
         // Ignore disposal errors - canvas might already be disposed
         console.warn('Canvas disposal warning:', error);
@@ -125,6 +150,124 @@ export default function SlideshowEditor() {
     if (canvasElementRefs.current[slideId]) {
       delete canvasElementRefs.current[slideId];
     }
+    // Clean up ready state
+    setCanvasReadyStates(prev => {
+      const newState = { ...prev };
+      delete newState[slideId];
+      return newState;
+    });
+  };
+
+  // Cleanup function for mini canvases
+  const disposeMiniCanvas = (slideId: string) => {
+    // Don't dispose during slide deletion to avoid DOM conflicts
+    if (isDeletingSlide) {
+      delete miniCanvasRefs.current[slideId];
+      delete miniCanvasElementRefs.current[slideId];
+      return;
+    }
+
+    if (miniCanvasRefs.current[slideId]) {
+      try {
+        const canvas = miniCanvasRefs.current[slideId];
+        // Check if canvas element is still in DOM before disposing
+        const canvasElement = miniCanvasElementRefs.current[slideId];
+        if (canvasElement && canvasElement.parentNode && canvasElement.isConnected) {
+          canvas.dispose();
+        } else {
+          // Canvas element already removed from DOM, just clear fabric objects
+          try {
+            canvas.clear();
+          } catch (clearError) {
+            // Even clearing might fail if canvas is in bad state
+            console.warn('Mini canvas clear warning:', clearError);
+          }
+        }
+      } catch (error) {
+        // Ignore disposal errors - canvas might already be disposed
+        console.warn('Mini canvas disposal warning:', error);
+      }
+      delete miniCanvasRefs.current[slideId];
+    }
+    if (miniCanvasElementRefs.current[slideId]) {
+      delete miniCanvasElementRefs.current[slideId];
+    }
+  };
+
+  // Mark canvas as ready after all content is loaded
+  const markCanvasReady = (slideId: string) => {
+    setCanvasReadyStates(prev => ({ ...prev, [slideId]: true }));
+  };
+
+  // Initialize mini canvas for unselected slides (read-only, optimized)
+  const initializeMiniCanvas = (slideId: string, canvasElement: HTMLCanvasElement) => {
+    // Check if canvas element is still in DOM and the slide still exists
+    if (!canvasElement || !canvasElement.parentNode) {
+      console.warn('Mini canvas element not in DOM, skipping initialization');
+      return;
+    }
+
+    // Check if the slide still exists in our data (might have been deleted)
+    const slideExists = currentSlideshow?.slides.some(slide => slide.id === slideId);
+    if (!slideExists || isDeletingSlide) {
+      console.warn('Slide no longer exists or deletion in progress, skipping mini canvas initialization');
+      return;
+    }
+
+    // Dispose existing mini canvas if it exists
+    disposeMiniCanvas(slideId);
+
+    try {
+      const canvas = new fabric.Canvas(canvasElement, {
+        width: 300,
+        height: 533,
+        backgroundColor: '#ffffff'
+      });
+
+      // Optimize for read-only display
+      canvas.selection = false;
+      canvas.skipTargetFind = true;
+
+      // Store references
+      miniCanvasRefs.current[slideId] = canvas;
+      miniCanvasElementRefs.current[slideId] = canvasElement;
+
+      // Add background image if exists
+      const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
+      if (slide?.backgroundImage) {
+        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+          img.set({
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top',
+            selectable: false,
+            evented: false,
+            isBackground: true
+          });
+          img.scaleToWidth(300);
+          canvas.add(img);
+          canvas.renderAll();
+          
+          // After background is loaded, restore text elements and overlays
+          restoreTextElementsMini(slideId, canvas);
+          restoreImageOverlaysMini(slideId, canvas);
+        }).catch((error) => {
+          console.warn('Failed to load background image for mini canvas:', slide.backgroundImage, error);
+          // Continue without background image
+          restoreTextElementsMini(slideId, canvas);
+          restoreImageOverlaysMini(slideId, canvas);
+        });
+      } else {
+        // No background image, just restore text elements and overlays
+        restoreTextElementsMini(slideId, canvas);
+        restoreImageOverlaysMini(slideId, canvas);
+      }
+    } catch (error) {
+      console.error('Failed to initialize mini canvas:', error);
+      // Clean up any partial initialization
+      disposeMiniCanvas(slideId);
+    }
   };
 
   // Cleanup all canvases on unmount
@@ -132,6 +275,9 @@ export default function SlideshowEditor() {
     return () => {
       Object.keys(canvasRefs.current).forEach(slideId => {
         disposeCanvas(slideId);
+      });
+      Object.keys(miniCanvasRefs.current).forEach(slideId => {
+        disposeMiniCanvas(slideId);
       });
     };
   }, []);
@@ -161,16 +307,37 @@ export default function SlideshowEditor() {
     }
   }, [slideshows, localSlideshows]);
 
-  // Cleanup canvases when slideshows change to prevent stale references
+  // Cleanup canvas references when slideshows change to prevent stale references
   useEffect(() => {
     const currentSlideIds = new Set(displaySlideshows.flatMap(s => s.slides.map(slide => slide.id)));
     const canvasSlideIds = Object.keys(canvasRefs.current);
+    const miniCanvasSlideIds = Object.keys(miniCanvasRefs.current);
     
-    // Dispose canvases for slides that no longer exist
+    // Only clean up references for slides that no longer exist
+    // Let React handle the actual DOM cleanup to avoid conflicts
     canvasSlideIds.forEach(slideId => {
       if (!currentSlideIds.has(slideId)) {
-        disposeCanvas(slideId);
+        delete canvasRefs.current[slideId];
+        delete canvasElementRefs.current[slideId];
       }
+    });
+
+    miniCanvasSlideIds.forEach(slideId => {
+      if (!currentSlideIds.has(slideId)) {
+        delete miniCanvasRefs.current[slideId];
+        delete miniCanvasElementRefs.current[slideId];
+      }
+    });
+
+    // Clean up ready states
+    setCanvasReadyStates(prev => {
+      const newState = { ...prev };
+      Object.keys(newState).forEach(slideId => {
+        if (!currentSlideIds.has(slideId)) {
+          delete newState[slideId];
+        }
+      });
+      return newState;
     });
   }, [displaySlideshows]);
 
@@ -233,14 +400,24 @@ export default function SlideshowEditor() {
 
   // Initialize fabric canvas for a slide
   const initializeCanvas = (slideId: string, canvasElement: HTMLCanvasElement) => {
-    // Check if canvas element is still in DOM
+    // Check if canvas element is still in DOM and the slide still exists
     if (!canvasElement || !canvasElement.parentNode) {
       console.warn('Canvas element not in DOM, skipping initialization');
       return;
     }
 
+    // Check if the slide still exists in our data (might have been deleted)
+    const slideExists = currentSlideshow?.slides.some(slide => slide.id === slideId);
+    if (!slideExists || isDeletingSlide) {
+      console.warn('Slide no longer exists or deletion in progress, skipping canvas initialization');
+      return;
+    }
+
     // Dispose existing canvas if it exists
     disposeCanvas(slideId);
+
+    // Mark canvas as not ready initially
+    setCanvasReadyStates(prev => ({ ...prev, [slideId]: false }));
 
     try {
       const canvas = new fabric.Canvas(canvasElement, {
@@ -273,6 +450,9 @@ export default function SlideshowEditor() {
           // After background is loaded, restore text elements and overlays
           restoreTextElements(slideId, canvas);
           restoreImageOverlays(slideId, canvas);
+          
+          // Mark canvas as ready after everything is loaded
+          markCanvasReady(slideId);
         }).catch((error) => {
           console.warn('Failed to load background image:', slide.backgroundImage, error);
           // Continue without background image - canvas will remain white
@@ -280,11 +460,17 @@ export default function SlideshowEditor() {
           // Still restore text elements and overlays even if background fails
           restoreTextElements(slideId, canvas);
           restoreImageOverlays(slideId, canvas);
+          
+          // Mark canvas as ready even if background failed
+          markCanvasReady(slideId);
         });
       } else {
         // No background image, just restore text elements and overlays
         restoreTextElements(slideId, canvas);
         restoreImageOverlays(slideId, canvas);
+        
+        // Mark canvas as ready immediately since no async loading
+        markCanvasReady(slideId);
       }
     } catch (error) {
       console.error('Failed to initialize canvas:', error);
@@ -414,6 +600,66 @@ export default function SlideshowEditor() {
     ensureProperLayering(canvas);
   };
 
+  // Restore text elements for mini canvas (read-only, optimized)
+  const restoreTextElementsMini = (slideId: string, canvas: fabric.Canvas) => {
+    const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
+    if (!slide?.texts) return;
+
+    slide.texts.forEach((textData: SlideText) => {
+      const fabricText = new fabric.IText(textData.text, {
+        left: textData.position_x,
+        top: textData.position_y,
+        fontFamily: textData.font,
+        fontSize: textData.size,
+        fill: '#000000',
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        angle: textData.rotation,
+        scaleX: 1,
+        scaleY: 1,
+        lockUniScaling: true,
+        selectable: false,
+        evented: false
+      });
+
+      canvas.add(fabricText);
+    });
+
+    canvas.renderAll();
+  };
+
+  // Restore image overlays for mini canvas (read-only, optimized)
+  const restoreImageOverlaysMini = (slideId: string, canvas: fabric.Canvas) => {
+    const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
+    if (!slide?.overlays) return;
+
+    slide.overlays.forEach((overlayData: SlideOverlay) => {
+      if (overlayData.imageUrl) {
+        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+          img.set({
+            left: overlayData.position_x,
+            top: overlayData.position_y,
+            angle: overlayData.rotation,
+            scaleX: overlayData.size / 100,
+            scaleY: overlayData.size / 100,
+            originX: 'center',
+            originY: 'center',
+            lockUniScaling: true,
+            selectable: false,
+            evented: false
+          });
+
+          canvas.add(img);
+        }).catch((error) => {
+          console.warn('Failed to restore image overlay for mini canvas:', overlayData.imageUrl, error);
+        });
+      }
+    });
+
+    canvas.renderAll();
+  };
+
   const handleSlideSelect = (slideId: string) => {
     // Dispose canvases from other slides to prevent DOM conflicts
     Object.keys(canvasRefs.current).forEach(id => {
@@ -421,6 +667,11 @@ export default function SlideshowEditor() {
         disposeCanvas(id);
       }
     });
+
+    // Dispose mini canvas for the selected slide (it will become a full canvas)
+    if (miniCanvasRefs.current[slideId]) {
+      disposeMiniCanvas(slideId);
+    }
 
     setSelectedSlideId(slideId);
     
@@ -561,10 +812,25 @@ export default function SlideshowEditor() {
       return;
     }
 
-    // Dispose the canvas for the slide being deleted immediately
-    if (canvasRefs.current[slideId]) {
-      disposeCanvas(slideId);
-    }
+    // Set deletion flag to prevent canvas disposal conflicts
+    setIsDeletingSlide(true);
+
+    // Force React to completely remount all canvas elements by changing the key
+    // This ensures clean slate and prevents any stale Fabric.js references
+    setSlideRenderKey(prev => prev + 1);
+
+    // Clear all canvas references immediately to prevent any operations on deleted slides
+    Object.keys(canvasRefs.current).forEach(id => {
+      delete canvasRefs.current[id];
+      delete canvasElementRefs.current[id];
+    });
+    Object.keys(miniCanvasRefs.current).forEach(id => {
+      delete miniCanvasRefs.current[id];
+      delete miniCanvasElementRefs.current[id];
+    });
+
+    // Clear all ready states
+    setCanvasReadyStates({});
 
     // Remove the slide from local state immediately for instant UX
     const updatedSlideshow = {
@@ -626,6 +892,9 @@ export default function SlideshowEditor() {
       setSelectedSlideId(slideId);
       
       alert('Failed to delete slide from database. The slide has been restored.');
+    } finally {
+      // Reset deletion flag after operation completes
+      setIsDeletingSlide(false);
     }
   };
 
@@ -1039,7 +1308,7 @@ export default function SlideshowEditor() {
               <div className="flex-shrink-0 w-[500px]"></div>
               
               {currentSlideshow?.slides.map((slide, index) => (
-                <div key={slide.id} className="flex-shrink-0 flex items-center justify-center relative" data-slide-id={slide.id}>
+                <div key={`${slide.id}-${slideRenderKey}`} className="flex-shrink-0 flex items-center justify-center relative" data-slide-id={slide.id}>
                   {/* Save Button - Only shown for selected slide with unsaved changes */}
                   {selectedSlideId === slide.id && hasUnsavedChanges && (
                     <div className="absolute -top-19 right-55 z-20">
@@ -1077,7 +1346,7 @@ export default function SlideshowEditor() {
                     <div className={`relative ${
                       selectedSlideId === slide.id
                         ? 'w-[300px] h-[533px]' // Less huge selected slide
-                        : 'w-[200px] h-[356px]' // Smaller non-selected slides
+                        : 'w-[300px] h-[533px]' // Smaller non-selected slides
                     } rounded-2xl overflow-hidden border-4 ${
                       selectedSlideId === slide.id
                         ? 'border-[var(--color-primary)]'
@@ -1086,7 +1355,7 @@ export default function SlideshowEditor() {
                       
                       {selectedSlideId === slide.id ? (
                         <canvas
-                          key={`canvas-${slide.id}`}
+                          key={`canvas-${slide.id}-${slideRenderKey}`}
                           ref={(el) => {
                             if (el && !canvasRefs.current[slide.id]) {
                               // Use requestAnimationFrame to ensure DOM is ready
@@ -1103,20 +1372,23 @@ export default function SlideshowEditor() {
                           className="w-full h-full"
                         />
                       ) : (
-                        slide.backgroundImage ? (
-                          <img
-                            src={slide.backgroundImage}
-                            alt={`Slide ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-[var(--color-bg-tertiary)] flex items-center justify-center text-[var(--color-text-muted)]">
-                            <div className="text-center">
-                              <PlayIcon />
-                              <p className="mt-2">Empty Slide</p>
-                            </div>
-                          </div>
-                        )
+                        <canvas
+                          key={`mini-canvas-${slide.id}-${slideRenderKey}`}
+                          ref={(el) => {
+                            if (el && !miniCanvasRefs.current[slide.id]) {
+                              // Use requestAnimationFrame to ensure DOM is ready
+                              requestAnimationFrame(() => {
+                                // Double-check the element is still in DOM before initializing
+                                if (el.parentNode && !miniCanvasRefs.current[slide.id]) {
+                                  initializeMiniCanvas(slide.id, el);
+                                }
+                              });
+                            }
+                          }}
+                          width="300"
+                          height="533"
+                          className="w-full h-full"
+                        />
                       )}
                     </div>
                   </button>
