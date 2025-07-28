@@ -33,6 +33,7 @@ export interface Slide {
   slideshow_id: string;
   background_image_id?: string;
   duration_seconds: number;
+  index: number;
   created_at: string;
   backgroundImage?: string;
   texts?: SlideText[];
@@ -87,6 +88,7 @@ export function useSlideshows() {
             slideshow_id,
             background_image_id,
             duration_seconds,
+            index,
             created_at,
             background_image:images!background_image_id (
               id,
@@ -112,7 +114,11 @@ export function useSlideshows() {
               position_y,
               rotation,
               size,
-              created_at
+              created_at,
+              overlay_image:images!image_id (
+                id,
+                file_path
+              )
             )
           )
         `)
@@ -124,12 +130,17 @@ export function useSlideshows() {
       // Transform the data to match our interface
       const transformedSlideshows: Slideshow[] = (slideshowsData || []).map(slideshow => ({
         ...slideshow,
-        slides: (slideshow.slides || []).map((slide: any) => ({
-          ...slide,
-          texts: slide.slide_texts || [],
-          overlays: slide.slide_overlays || [],
-          backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
-        }))
+        slides: (slideshow.slides || [])
+          .sort((a: any, b: any) => (a.index || 0) - (b.index || 0)) // Sort by index, treating null as 0
+          .map((slide: any) => ({
+            ...slide,
+            texts: slide.slide_texts || [],
+            overlays: (slide.slide_overlays || []).map((overlay: any) => ({
+              ...overlay,
+              imageUrl: overlay.overlay_image?.file_path ? getImageUrl(overlay.overlay_image.file_path) : undefined
+            })),
+            backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
+          }))
       }))
 
       setSlideshows(transformedSlideshows)
@@ -169,7 +180,8 @@ export function useSlideshows() {
         .from('slides')
         .insert({
           slideshow_id: slideshowData.id,
-          duration_seconds: 3
+          duration_seconds: 3,
+          index: 0
         })
         .select()
         .single()
@@ -210,12 +222,22 @@ export function useSlideshows() {
     try {
       setError(null)
 
+      // Find the current slideshow to determine the next index
+      const currentSlideshow = slideshows.find(s => s.id === slideshowId)
+      if (!currentSlideshow) {
+        throw new Error('Slideshow not found')
+      }
+
+      // Calculate the next index
+      const nextIndex = Math.max(...currentSlideshow.slides.map(s => s.index || 0), -1) + 1
+
       // Create the new slide in the database
       const { data: slideData, error: slideError } = await supabase
         .from('slides')
         .insert({
           slideshow_id: slideshowId,
-          duration_seconds: 3
+          duration_seconds: 3,
+          index: nextIndex
         })
         .select()
         .single()
@@ -372,6 +394,82 @@ export function useSlideshows() {
     }
   }
 
+  const saveSlideOverlays = async (slideId: string, overlays: SlideOverlay[]) => {
+    if (!user) {
+      throw new Error('User must be authenticated to save slide overlays')
+    }
+
+    try {
+      setError(null)
+
+      // First, delete all existing overlays for this slide
+      const { error: deleteError } = await supabase
+        .from('slide_overlays')
+        .delete()
+        .eq('slide_id', slideId)
+
+      if (deleteError) throw deleteError
+
+      // Then insert all current overlays
+      if (overlays.length > 0) {
+        const overlayInserts = overlays.map(overlay => ({
+          slide_id: slideId,
+          image_id: overlay.image_id,
+          crop: overlay.crop || null,
+          position_x: Math.round(overlay.position_x),
+          position_y: Math.round(overlay.position_y),
+          rotation: Math.round(overlay.rotation),
+          size: Math.round(overlay.size)
+        }))
+
+        const { data: insertedOverlays, error: insertError } = await supabase
+          .from('slide_overlays')
+          .insert(overlayInserts)
+          .select()
+
+        if (insertError) throw insertError
+
+        // Update local state with the inserted overlays (which have new IDs)
+        setSlideshows(prev => prev.map(slideshow => ({
+          ...slideshow,
+          slides: slideshow.slides.map(slide => {
+            if (slide.id === slideId) {
+              return {
+                ...slide,
+                overlays: insertedOverlays.map(overlay => ({
+                  ...overlay,
+                  imageUrl: overlays.find(o => o.image_id === overlay.image_id)?.imageUrl
+                }))
+              }
+            }
+            return slide
+          })
+        })))
+      } else {
+        // If no overlays, just update local state to empty array
+        setSlideshows(prev => prev.map(slideshow => ({
+          ...slideshow,
+          slides: slideshow.slides.map(slide => {
+            if (slide.id === slideId) {
+              return {
+                ...slide,
+                overlays: []
+              }
+            }
+            return slide
+          })
+        })))
+      }
+
+      return true
+    } catch (err) {
+      console.error('Error saving slide overlays:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save slide overlays'
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    }
+  }
+
   return {
     slideshows,
     loading,
@@ -379,6 +477,7 @@ export function useSlideshows() {
     createSlideshow,
     addSlide,
     saveSlideTexts,
+    saveSlideOverlays,
     updateSlideBackground,
     refetch: fetchSlideshows
   }

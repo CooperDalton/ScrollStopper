@@ -26,7 +26,7 @@ const SaveIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, saveSlideTexts, updateSlideBackground } = useSlideshows();
+  const { slideshows, loading, error, createSlideshow, addSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground } = useSlideshows();
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -126,14 +126,14 @@ export default function SlideshowEditor() {
                 // Mark as having unsaved changes
                 setHasUnsavedChanges(true);
               }
-            } else if (activeObject.get('overlayId')) {
-              // It's an image overlay
-              const overlayId = activeObject.get('overlayId');
-              if (currentSlide?.overlays) {
-                currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
-                // Mark as having unsaved changes (for future overlay saving)
-                setHasUnsavedChanges(true);
-              }
+                    } else if (activeObject.get('overlayId')) {
+          // It's an image overlay
+          const overlayId = activeObject.get('overlayId');
+          if (currentSlide?.overlays) {
+            currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
+            // Mark as having unsaved changes
+            setHasUnsavedChanges(true);
+          }
             }
           }
         }
@@ -493,6 +493,9 @@ export default function SlideshowEditor() {
       overlayData.position_y = fabricImage.top || 0;
       overlayData.rotation = fabricImage.angle || 0;
       overlayData.size = Math.round((fabricImage.scaleX || 1) * 100);
+      
+      // Mark as having unsaved changes
+      setHasUnsavedChanges(true);
     }
   };
 
@@ -584,6 +587,9 @@ export default function SlideshowEditor() {
           currentSlide.overlays = [];
         }
         currentSlide.overlays.push(newOverlay);
+        
+        // Mark as having unsaved changes
+        setHasUnsavedChanges(true);
 
         img.set({
           left: newOverlay.position_x,
@@ -630,8 +636,11 @@ export default function SlideshowEditor() {
     try {
       setIsSaving(true);
       
-      // Save text data to Supabase
-      await saveSlideTexts(selectedSlideId, currentSlide.texts || []);
+      // Save both text and overlay data to Supabase
+      await Promise.all([
+        saveSlideTexts(selectedSlideId, currentSlide.texts || []),
+        saveSlideOverlays(selectedSlideId, currentSlide.overlays || [])
+      ]);
       
       // Mark as saved
       setHasUnsavedChanges(false);
