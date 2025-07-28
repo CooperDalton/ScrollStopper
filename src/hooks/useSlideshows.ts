@@ -470,12 +470,116 @@ export function useSlideshows() {
     }
   }
 
+  const deleteSlide = async (slideId: string) => {
+    if (!user) {
+      throw new Error('User must be authenticated to delete slides')
+    }
+
+    try {
+      setError(null)
+
+      // Find the slide to get its slideshow_id and index
+      const slideshowWithSlide = slideshows.find(slideshow => 
+        slideshow.slides.some(slide => slide.id === slideId)
+      )
+      
+      if (!slideshowWithSlide) {
+        throw new Error('Slide not found')
+      }
+
+      const slideToDelete = slideshowWithSlide.slides.find(slide => slide.id === slideId)
+      if (!slideToDelete) {
+        throw new Error('Slide not found')
+      }
+
+      // Prevent deleting the last remaining slide
+      if (slideshowWithSlide.slides.length === 1) {
+        throw new Error('Cannot delete the last slide in a slideshow')
+      }
+
+      // Immediately update local state for instant UI feedback
+      setSlideshows(prev => prev.map(slideshow => {
+        if (slideshow.id === slideshowWithSlide.id) {
+          return {
+            ...slideshow,
+            slides: slideshow.slides
+              .filter(slide => slide.id !== slideId)
+              .map(slide => ({
+                ...slide,
+                index: slide.index > slideToDelete.index ? slide.index - 1 : slide.index
+              }))
+          }
+        }
+        return slideshow
+      }))
+
+      // Now perform database operations in the background
+      // Delete associated slide_texts and slide_overlays first
+      const { error: deleteTextsError } = await supabase
+        .from('slide_texts')
+        .delete()
+        .eq('slide_id', slideId)
+
+      if (deleteTextsError) throw deleteTextsError
+
+      const { error: deleteOverlaysError } = await supabase
+        .from('slide_overlays')
+        .delete()
+        .eq('slide_id', slideId)
+
+      if (deleteOverlaysError) throw deleteOverlaysError
+
+      // Now delete the slide itself
+      const { error: deleteSlideError } = await supabase
+        .from('slides')
+        .delete()
+        .eq('id', slideId)
+
+      if (deleteSlideError) throw deleteSlideError
+
+      // Update indexes of subsequent slides in the database
+      const subsequentSlides = slideshowWithSlide.slides.filter(slide => 
+        slide.index > slideToDelete.index
+      )
+
+      if (subsequentSlides.length > 0) {
+        const updates = subsequentSlides.map(slide => ({
+          id: slide.id,
+          index: slide.index - 1
+        }))
+
+        for (const update of updates) {
+          const { error: updateError } = await supabase
+            .from('slides')
+            .update({ index: update.index })
+            .eq('id', update.id)
+
+          if (updateError) throw updateError
+        }
+      }
+
+      return { 
+        deletedSlide: slideToDelete,
+        remainingSlides: slideshowWithSlide.slides.filter(slide => slide.id !== slideId)
+      }
+    } catch (err) {
+      console.error('Error deleting slide:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete slide'
+      setError(errorMessage)
+      
+      // If database operations failed, we should restore the slide in the UI
+      // For now, we'll let the component handle this by showing an error message
+      throw new Error(errorMessage)
+    }
+  }
+
   return {
     slideshows,
     loading,
     error,
     createSlideshow,
     addSlide,
+    deleteSlide,
     saveSlideTexts,
     saveSlideOverlays,
     updateSlideBackground,

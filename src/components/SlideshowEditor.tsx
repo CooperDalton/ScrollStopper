@@ -32,7 +32,7 @@ const TrashIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground } = useSlideshows();
+  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, refetch } = useSlideshows();
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -403,6 +403,74 @@ export default function SlideshowEditor() {
     } catch (error) {
       console.error('Error adding slide:', error);
       alert('Failed to add slide. Please try again.');
+    }
+  };
+
+  const handleDeleteSlide = async (slideId: string) => {
+    if (!currentSlideshow) return;
+
+    // Show confirmation dialog
+    const confirmed = window.confirm('Are you sure you want to delete this slide? This action cannot be undone.');
+    if (!confirmed) return;
+
+    // Find the slide being deleted and determine which slide to select next
+    const slideToDelete = currentSlideshow.slides.find(slide => slide.id === slideId);
+    if (!slideToDelete) return;
+
+    // Prevent deleting the last remaining slide
+    if (currentSlideshow.slides.length === 1) {
+      alert('Cannot delete the last slide in a slideshow');
+      return;
+    }
+
+    // Dispose the canvas for the slide being deleted immediately
+    if (canvasRefs.current[slideId]) {
+      disposeCanvas(slideId);
+    }
+
+    // Immediately select a different slide for better UX
+    const remainingSlides = currentSlideshow.slides.filter(slide => slide.id !== slideId);
+    const deletedIndex = slideToDelete.index;
+    const slideToSelect = remainingSlides.find(slide => slide.index === deletedIndex) ||
+                         remainingSlides.find(slide => slide.index === deletedIndex - 1) ||
+                         remainingSlides[0];
+    
+    if (slideToSelect) {
+      setSelectedSlideId(slideToSelect.id);
+      
+      // Center the newly selected slide after deletion
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideToSelect.id}"]`) as HTMLElement;
+          if (slideElement) {
+            const container = scrollContainerRef.current;
+            const containerWidth = container.clientWidth;
+            const slideLeft = slideElement.offsetLeft;
+            const slideWidth = slideElement.offsetWidth;
+            
+            // Calculate scroll position to center the slide within the fixed container
+            const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+            
+            // Smooth scroll to the calculated position
+            container.scrollTo({
+              left: scrollLeft,
+              behavior: 'smooth'
+            });
+          }
+        }
+      }, 100); // Delay to allow for re-render after deletion
+    }
+
+    // Perform database operations in the background
+    try {
+      await deleteSlide(slideId);
+      console.log('Slide deleted successfully');
+    } catch (error) {
+      console.error('Error deleting slide:', error);
+      alert('Failed to delete slide from database. Refreshing to restore correct state.');
+      
+      // Refresh the data to restore the correct state since database operation failed
+      await refetch();
     }
   };
 
@@ -778,10 +846,7 @@ export default function SlideshowEditor() {
                   {selectedSlideId === slide.id && (
                     <div className="absolute -top-20 left-67 z-20">
                       <button
-                        onClick={() => {
-                          // TODO: Implement delete functionality
-                          console.log('Delete slide:', slide.id);
-                        }}
+                        onClick={() => handleDeleteSlide(slide.id)}
                         className="flex items-center justify-center w-12 h-12 bg-gray-300 hover:bg-gray-500 text-red-500 rounded-full shadow-lg transition-colors"
                       >
                         <TrashIcon />
