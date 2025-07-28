@@ -9,6 +9,7 @@ interface ImageUploadModalProps {
   onClose: () => void;
   collection: ImageCollection | null;
   onUpload: (file: File) => Promise<void>;
+  onBatchUpload?: (files: File[], onProgress?: (completed: number, total: number, current?: string) => void) => Promise<void>;
   onDelete: (imageId: string) => Promise<void>;
   images: Array<{ id: string; file_path: string; created_at: string }>;
   isLoading?: boolean;
@@ -38,40 +39,77 @@ const TrashIcon = () => (
   </svg>
 );
 
-export default function ImageUploadModal({ isOpen, onClose, collection, onUpload, onDelete, images, isLoading }: ImageUploadModalProps) {
+export default function ImageUploadModal({ isOpen, onClose, collection, onUpload, onBatchUpload, onDelete, images, isLoading }: ImageUploadModalProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const [deletingImages, setDeletingImages] = useState<Set<string>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<{total: number, completed: number, current?: string}>({ total: 0, completed: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    const file = files[0];
+    // Convert FileList to Array for easier handling
+    const fileArray = Array.from(files);
     
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      setError('Please select a valid image file');
-      return;
+    // Validate all files
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    for (const file of fileArray) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        errors.push(`${file.name}: Not a valid image file`);
+        continue;
+      }
+
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        errors.push(`${file.name}: File size must be less than 10MB`);
+        continue;
+      }
+
+      validFiles.push(file);
     }
 
-    // Validate file size (10MB limit)
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File size must be less than 10MB');
-      return;
+    // Show validation errors if any
+    if (errors.length > 0) {
+      setError(errors.join('\n'));
+      if (validFiles.length === 0) return;
+    } else {
+      setError(null);
     }
 
     setUploading(true);
-    setError(null);
+    setUploadProgress({ total: validFiles.length, completed: 0 });
 
     try {
-      await onUpload(file);
+      if (validFiles.length === 1) {
+        // Single file upload - use existing onUpload function
+        setUploadProgress({ total: 1, completed: 0, current: validFiles[0].name });
+        await onUpload(validFiles[0]);
+        setUploadProgress({ total: 1, completed: 1 });
+      } else if (validFiles.length > 1 && onBatchUpload) {
+        // Multiple file upload - use batch upload function with progress
+        await onBatchUpload(validFiles, (completed, total, current) => {
+          setUploadProgress({ total, completed, current });
+        });
+      } else if (validFiles.length > 1) {
+        // Fallback: upload files one by one if no batch upload function
+        for (let i = 0; i < validFiles.length; i++) {
+          const file = validFiles[i];
+          setUploadProgress({ total: validFiles.length, completed: i, current: file.name });
+          await onUpload(file);
+        }
+        setUploadProgress({ total: validFiles.length, completed: validFiles.length });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload image');
+      setError(err instanceof Error ? err.message : 'Failed to upload images');
     } finally {
       setUploading(false);
+      setUploadProgress({ total: 0, completed: 0 });
     }
   };
 
@@ -172,14 +210,32 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
                 <UploadIcon />
               )}
               <h3 className="text-lg font-medium text-[var(--color-text)] mt-4">
-                {uploading ? 'Uploading...' : 'Upload an image'}
+                {uploading ? 'Uploading...' : 'Upload images'}
               </h3>
               <p className="text-[var(--color-text-muted)] mt-2">
-                {uploading ? 'Please wait while your image is uploaded' : 'Drag and drop or click to select'}
+                {uploading 
+                  ? (uploadProgress.total > 1 
+                      ? `Uploading ${uploadProgress.completed + 1} of ${uploadProgress.total}${uploadProgress.current ? `: ${uploadProgress.current}` : ''}` 
+                      : 'Please wait while your image is uploaded')
+                  : 'Drag and drop or click to select (multiple files supported)'
+                }
               </p>
               <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                Supports: JPG, PNG, GIF, WebP (Max 10MB)
+                Supports: JPG, PNG, GIF, WebP (Max 10MB each)
               </p>
+              {uploading && uploadProgress.total > 1 && (
+                <div className="w-full max-w-xs mt-4">
+                  <div className="bg-[var(--color-bg-secondary)] rounded-full h-2">
+                    <div 
+                      className="bg-[var(--color-primary)] h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${(uploadProgress.completed / uploadProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1 text-center">
+                    {uploadProgress.completed} / {uploadProgress.total} completed
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -187,6 +243,7 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={(e) => handleFileSelect(e.target.files)}
             className="hidden"
             disabled={uploading}

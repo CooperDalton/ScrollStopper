@@ -66,23 +66,45 @@ export default function SlideshowEditor() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [localSlideshows, setLocalSlideshows] = useState<Slideshow[]>([]);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
-  const currentSlideshow = slideshows.find((s: Slideshow) => s.id === selectedSlideshowId);
+  // Use local slideshows if available, otherwise use the ones from the hook
+  const displaySlideshows = localSlideshows.length > 0 ? localSlideshows : slideshows;
+  const currentSlideshow = displaySlideshows.find((s: Slideshow) => s.id === selectedSlideshowId);
   const currentSlide = currentSlideshow?.slides.find((s: Slide) => s.id === selectedSlideId);
+
+  // Helper function to update local slideshow state
+  const updateLocalSlideshow = (slideshowId: string, slideId: string, updates: Partial<Slide>) => {
+    const updatedSlideshows = displaySlideshows.map(slideshow => {
+      if (slideshow.id === slideshowId) {
+        return {
+          ...slideshow,
+          slides: slideshow.slides.map(slide => {
+            if (slide.id === slideId) {
+              return { ...slide, ...updates };
+            }
+            return slide;
+          })
+        };
+      }
+      return slideshow;
+    });
+    setLocalSlideshows(updatedSlideshows);
+  };
 
   // Set default selected slideshow and slide when slideshows load
   useEffect(() => {
-    if (slideshows.length > 0 && !selectedSlideshowId) {
-      const firstSlideshow = slideshows[0];
+    if (displaySlideshows.length > 0 && !selectedSlideshowId) {
+      const firstSlideshow = displaySlideshows[0];
       setSelectedSlideshowId(firstSlideshow.id);
       if (firstSlideshow.slides.length > 0) {
         setSelectedSlideId(firstSlideshow.slides[0].id);
       }
     }
-  }, [slideshows, selectedSlideshowId]);
+  }, [displaySlideshows, selectedSlideshowId]);
 
   // Reset unsaved changes when switching slides
   useEffect(() => {
@@ -114,9 +136,34 @@ export default function SlideshowEditor() {
     };
   }, []);
 
+  // Sync local slideshows with hook slideshows when they change
+  useEffect(() => {
+    if (slideshows.length > 0) {
+      // If local slideshows is empty, initialize with hook data
+      if (localSlideshows.length === 0) {
+        setLocalSlideshows(slideshows);
+      } else {
+        // Merge any new slideshows from the hook while preserving local changes
+        const updatedSlideshows = slideshows.map(hookSlideshow => {
+          const localSlideshow = localSlideshows.find(ls => ls.id === hookSlideshow.id);
+          return localSlideshow || hookSlideshow;
+        });
+        
+        // Add any new slideshows that don't exist locally
+        const newSlideshows = slideshows.filter(hs => 
+          !localSlideshows.some(ls => ls.id === hs.id)
+        );
+        
+        if (newSlideshows.length > 0 || updatedSlideshows.length !== localSlideshows.length) {
+          setLocalSlideshows([...updatedSlideshows, ...newSlideshows]);
+        }
+      }
+    }
+  }, [slideshows, localSlideshows]);
+
   // Cleanup canvases when slideshows change to prevent stale references
   useEffect(() => {
-    const currentSlideIds = new Set(slideshows.flatMap(s => s.slides.map(slide => slide.id)));
+    const currentSlideIds = new Set(displaySlideshows.flatMap(s => s.slides.map(slide => slide.id)));
     const canvasSlideIds = Object.keys(canvasRefs.current);
     
     // Dispose canvases for slides that no longer exist
@@ -125,7 +172,7 @@ export default function SlideshowEditor() {
         disposeCanvas(slideId);
       }
     });
-  }, [slideshows]);
+  }, [displaySlideshows]);
 
   // Keyboard event listener for delete functionality
   useEffect(() => {
@@ -155,17 +202,25 @@ export default function SlideshowEditor() {
               const textId = activeObject.get('textId');
               if (currentSlide?.texts) {
                 currentSlide.texts = currentSlide.texts.filter(t => t.id !== textId);
+                // Update local state to persist deletion when switching slides
+                updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+                  texts: currentSlide.texts
+                });
                 // Mark as having unsaved changes
                 setHasUnsavedChanges(true);
               }
-                    } else if (activeObject.get('overlayId')) {
-          // It's an image overlay
-          const overlayId = activeObject.get('overlayId');
-          if (currentSlide?.overlays) {
-            currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
-            // Mark as having unsaved changes
-            setHasUnsavedChanges(true);
-          }
+            } else if (activeObject.get('overlayId')) {
+              // It's an image overlay
+              const overlayId = activeObject.get('overlayId');
+              if (currentSlide?.overlays) {
+                currentSlide.overlays = currentSlide.overlays.filter(o => o.id !== overlayId);
+                // Update local state to persist deletion when switching slides
+                updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+                  overlays: currentSlide.overlays
+                });
+                // Mark as having unsaved changes
+                setHasUnsavedChanges(true);
+              }
             }
           }
         }
@@ -395,49 +450,106 @@ export default function SlideshowEditor() {
   const handleAddSlide = async () => {
     if (!currentSlideshow) return;
     
+    // Dispose all canvases before state change to prevent DOM conflicts
+    Object.keys(canvasRefs.current).forEach(slideId => {
+      disposeCanvas(slideId);
+    });
+    
+    // Create a temporary slide locally first for instant UX
+    const tempSlideId = `temp-${Date.now()}`;
+    const nextIndex = Math.max(...currentSlideshow.slides.map(s => s.index || 0), -1) + 1;
+    
+    const tempSlide: Slide = {
+      id: tempSlideId,
+      slideshow_id: currentSlideshow.id,
+      duration_seconds: 3,
+      index: nextIndex,
+      created_at: new Date().toISOString(),
+      texts: [],
+      overlays: []
+    };
+    
+    // Add slide locally first
+    const updatedSlideshow = {
+      ...currentSlideshow,
+      slides: [...currentSlideshow.slides, tempSlide]
+    };
+    
+    // Update local state immediately
+    const updatedSlideshows = displaySlideshows.map(s => 
+      s.id === currentSlideshow.id ? updatedSlideshow : s
+    );
+    
+    setLocalSlideshows(updatedSlideshows);
+    
+    // Select the new slide immediately
+    setSelectedSlideId(tempSlideId);
+    
+    // Center the new slide
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${tempSlideId}"]`) as HTMLElement;
+        if (slideElement) {
+          const container = scrollContainerRef.current;
+          const containerWidth = container.clientWidth;
+          const slideLeft = slideElement.offsetLeft;
+          const slideWidth = slideElement.offsetWidth;
+          
+          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+          
+          container.scrollTo({
+            left: scrollLeft,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 50);
+    
+    // Now add to database in the background
     try {
-      // Dispose all canvases before state change to prevent DOM conflicts
-      Object.keys(canvasRefs.current).forEach(slideId => {
-        disposeCanvas(slideId);
-      });
-      
-      // Add slide to database and update state
       const newSlide = await addSlide(currentSlideshow.id);
+      
+      // Replace the temporary slide with the real one from database
+      const finalSlideshow = {
+        ...updatedSlideshow,
+        slides: updatedSlideshow.slides.map(slide => 
+          slide.id === tempSlideId ? { ...newSlide, texts: [], overlays: [] } : slide
+        )
+      };
+      
+      const finalSlideshows = displaySlideshows.map(s => 
+        s.id === currentSlideshow.id ? finalSlideshow : s
+      );
+      
+      // Update local state with the real slide
+      setLocalSlideshows(finalSlideshows);
       setSelectedSlideId(newSlide.id);
       
-      // Manually center the new slide within the fixed container
-      setTimeout(() => {
-        if (scrollContainerRef.current) {
-          const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${newSlide.id}"]`) as HTMLElement;
-          if (slideElement) {
-            const container = scrollContainerRef.current;
-            const containerWidth = container.clientWidth;
-            const slideLeft = slideElement.offsetLeft;
-            const slideWidth = slideElement.offsetWidth;
-            
-            // Calculate scroll position to center the slide within the fixed container
-            const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
-            
-            // Smooth scroll to the calculated position
-            container.scrollTo({
-              left: scrollLeft,
-              behavior: 'smooth'
-            });
-          }
-        }
-      }, 100); // Increased delay to allow for re-render
     } catch (error) {
-      console.error('Error adding slide:', error);
+      console.error('Error adding slide to database:', error);
+      // Remove the temporary slide if database operation failed
+      const revertedSlideshow = {
+        ...currentSlideshow,
+        slides: currentSlideshow.slides.filter(slide => slide.id !== tempSlideId)
+      };
+      
+      const revertedSlideshows = displaySlideshows.map(s => 
+        s.id === currentSlideshow.id ? revertedSlideshow : s
+      );
+      
+      setLocalSlideshows(revertedSlideshows);
+      
+      // Select the first available slide
+      if (revertedSlideshow.slides.length > 0) {
+        setSelectedSlideId(revertedSlideshow.slides[0].id);
+      }
+      
       alert('Failed to add slide. Please try again.');
     }
   };
 
   const handleDeleteSlide = async (slideId: string) => {
     if (!currentSlideshow) return;
-
-    // Show confirmation dialog
-    const confirmed = window.confirm('Are you sure you want to delete this slide? This action cannot be undone.');
-    if (!confirmed) return;
 
     // Find the slide being deleted and determine which slide to select next
     const slideToDelete = currentSlideshow.slides.find(slide => slide.id === slideId);
@@ -454,8 +566,20 @@ export default function SlideshowEditor() {
       disposeCanvas(slideId);
     }
 
+    // Remove the slide from local state immediately for instant UX
+    const updatedSlideshow = {
+      ...currentSlideshow,
+      slides: currentSlideshow.slides.filter(slide => slide.id !== slideId)
+    };
+
+    const updatedSlideshows = displaySlideshows.map(s => 
+      s.id === currentSlideshow.id ? updatedSlideshow : s
+    );
+
+    setLocalSlideshows(updatedSlideshows);
+
     // Immediately select a different slide for better UX
-    const remainingSlides = currentSlideshow.slides.filter(slide => slide.id !== slideId);
+    const remainingSlides = updatedSlideshow.slides;
     const deletedIndex = slideToDelete.index;
     const slideToSelect = remainingSlides.find(slide => slide.index === deletedIndex) ||
                          remainingSlides.find(slide => slide.index === deletedIndex - 1) ||
@@ -493,10 +617,15 @@ export default function SlideshowEditor() {
       console.log('Slide deleted successfully');
     } catch (error) {
       console.error('Error deleting slide:', error);
-      alert('Failed to delete slide from database. Refreshing to restore correct state.');
+      // Restore the slide if database operation failed
+      setLocalSlideshows(displaySlideshows.map(s => 
+        s.id === currentSlideshow.id ? currentSlideshow : s
+      ));
       
-      // Refresh the data to restore the correct state since database operation failed
-      await refetch();
+      // Re-select the original slide
+      setSelectedSlideId(slideId);
+      
+      alert('Failed to delete slide from database. The slide has been restored.');
     }
   };
 
@@ -508,10 +637,19 @@ export default function SlideshowEditor() {
     const nextDuration = currentDuration >= 6 ? 2 : currentDuration + 1;
 
     try {
+      // Update local state immediately for instant UI feedback
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        duration_seconds: nextDuration
+      });
+
       await updateSlideDuration(currentSlide.id, nextDuration);
       console.log(`Slide duration updated to ${nextDuration}s`);
     } catch (error) {
       console.error('Error updating slide duration:', error);
+      // Revert local state if database update failed
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        duration_seconds: currentDuration
+      });
       alert('Failed to update slide duration. Please try again.');
     }
   };
@@ -538,6 +676,11 @@ export default function SlideshowEditor() {
       currentSlide.texts = [];
     }
     currentSlide.texts.push(newText);
+    
+    // Update local state to persist the new text when switching slides
+    updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+      texts: currentSlide.texts
+    });
     
     // Mark as having unsaved changes
     setHasUnsavedChanges(true);
@@ -586,6 +729,7 @@ export default function SlideshowEditor() {
 
     const textData = currentSlide.texts.find(t => t.id === textId);
     if (textData) {
+      // Update the text data
       textData.text = fabricText.text || 'text';
       textData.position_x = fabricText.left || 0;
       textData.position_y = fabricText.top || 0;
@@ -594,6 +738,11 @@ export default function SlideshowEditor() {
       const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
       textData.size = Math.round(effectiveFontSize);
       textData.rotation = fabricText.angle || 0;
+      
+      // Update local state to persist changes when switching slides
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        texts: currentSlide.texts
+      });
       
       // Mark as having unsaved changes
       setHasUnsavedChanges(true);
@@ -610,6 +759,11 @@ export default function SlideshowEditor() {
       overlayData.rotation = fabricImage.angle || 0;
       overlayData.size = Math.round((fabricImage.scaleX || 1) * 100);
       
+      // Update local state to persist changes when switching slides
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        overlays: currentSlide.overlays
+      });
+      
       // Mark as having unsaved changes
       setHasUnsavedChanges(true);
     }
@@ -619,6 +773,12 @@ export default function SlideshowEditor() {
     if (!currentSlide) return;
 
     try {
+      // Update local state immediately for instant UI feedback
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        background_image_id: imageId,
+        backgroundImage: imageUrl
+      });
+
       // Automatically sync to Supabase
       await updateSlideBackground(selectedSlideId, imageId);
 
@@ -655,6 +815,11 @@ export default function SlideshowEditor() {
       console.log('Background image updated successfully');
     } catch (error) {
       console.error('Failed to update background image:', error);
+      // Revert local state if database update failed
+      updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+        background_image_id: currentSlide.background_image_id,
+        backgroundImage: currentSlide.backgroundImage
+      });
       alert('Failed to update background image. Please try again.');
     }
   };
@@ -703,6 +868,11 @@ export default function SlideshowEditor() {
           currentSlide.overlays = [];
         }
         currentSlide.overlays.push(newOverlay);
+        
+        // Update local state to persist the new overlay when switching slides
+        updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+          overlays: currentSlide.overlays
+        });
         
         // Mark as having unsaved changes
         setHasUnsavedChanges(true);
@@ -819,13 +989,13 @@ export default function SlideshowEditor() {
             <div className="text-center text-red-500 py-8">
               Error: {error}
             </div>
-          ) : slideshows.length === 0 ? (
+          ) : displaySlideshows.length === 0 ? (
             <div className="text-center text-[var(--color-text-muted)] py-8">
               No slideshows yet. Create your first one!
             </div>
           ) : (
             <div className="space-y-3">
-              {slideshows.map((slideshow: Slideshow) => (
+              {displaySlideshows.map((slideshow: Slideshow) => (
               <button
                 key={slideshow.id}
                 onClick={() => {

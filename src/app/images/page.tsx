@@ -33,7 +33,7 @@ export default function ImagesPage() {
   const [selectedCollection, setSelectedCollection] = useState<ImageCollection | null>(null);
   
   const { collections, isLoading: collectionsLoading, addCollection, error: collectionsError } = useCollections();
-  const { images, isLoading: imagesLoading, uploadImage, removeImage } = useImages(selectedCollection?.id || null);
+  const { images, isLoading: imagesLoading, uploadImage, uploadImages, removeImage } = useImages(selectedCollection?.id || null);
 
   const handleCreateCollection = async (name: string) => {
     await addCollection({ name });
@@ -46,6 +46,10 @@ export default function ImagesPage() {
 
   const handleImageUpload = async (file: File) => {
     await uploadImage(file);
+  };
+
+  const handleBatchImageUpload = async (files: File[], onProgress?: (completed: number, total: number, current?: string) => void) => {
+    await uploadImages(files, onProgress);
   };
 
   const handleImageDelete = async (imageId: string) => {
@@ -167,6 +171,7 @@ export default function ImagesPage() {
         }}
         collection={selectedCollection}
         onUpload={handleImageUpload}
+        onBatchUpload={handleBatchImageUpload}
         onDelete={handleImageDelete}
         images={images}
         isLoading={imagesLoading}
