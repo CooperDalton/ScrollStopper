@@ -71,10 +71,39 @@ export default function SlideshowEditor() {
   const [isDeletingSlide, setIsDeletingSlide] = useState(false);
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  
+  // Track previous slide for auto-save functionality
+  const [previousSlideId, setPreviousSlideId] = useState<string>('');
+  const [previousSlideshowId, setPreviousSlideshowId] = useState<string>('');
+  const previousSlideRef = useRef<Slide | null>(null);
   const canvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
   const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
+
+  // Reusable function to center a slide within the container
+  const centerSlide = (slideId: string, delay: number = 50) => {
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`) as HTMLElement;
+        if (slideElement) {
+          const container = scrollContainerRef.current;
+          const containerWidth = container.clientWidth;
+          const slideLeft = slideElement.offsetLeft;
+          const slideWidth = slideElement.offsetWidth;
+          
+          // Calculate scroll position to center the slide within the fixed container
+          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
+          
+          // Smooth scroll to the calculated position
+          container.scrollTo({
+            left: scrollLeft,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, delay);
+  };
 
   // Use local slideshows if available, otherwise use the ones from the hook
   const displaySlideshows = localSlideshows.length > 0 ? localSlideshows : slideshows;
@@ -107,14 +136,58 @@ export default function SlideshowEditor() {
       setSelectedSlideshowId(firstSlideshow.id);
       if (firstSlideshow.slides.length > 0) {
         setSelectedSlideId(firstSlideshow.slides[0].id);
+        
+        // Center the first slide after a delay to ensure DOM is ready
+        centerSlide(firstSlideshow.slides[0].id, 100);
       }
     }
   }, [displaySlideshows, selectedSlideshowId]);
 
-  // Reset unsaved changes when switching slides
+  // Track current slide data for auto-save functionality
   useEffect(() => {
-    setHasUnsavedChanges(false);
-  }, [selectedSlideId]);
+    if (currentSlide) {
+      previousSlideRef.current = { ...currentSlide };
+      console.log('Updated previousSlideRef for slide:', currentSlide.id, {
+        textsCount: currentSlide.texts?.length || 0,
+        overlaysCount: currentSlide.overlays?.length || 0
+      });
+    }
+  }, [currentSlide]);
+
+  // Auto-save previous slide when switching slides
+  useEffect(() => {
+    const handleSlideChange = async () => {
+      // Only trigger if we actually changed slides and have unsaved changes
+      if (previousSlideId && previousSlideId !== selectedSlideId && hasUnsavedChanges && previousSlideRef.current) {
+        console.log('Auto-saving previous slide due to slide change...', previousSlideId);
+        try {
+          await autoSaveSlide(previousSlideId, previousSlideRef.current);
+          console.log('Auto-save completed successfully');
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
+      
+      // Update tracking state
+      setPreviousSlideId(selectedSlideId);
+      setPreviousSlideshowId(selectedSlideshowId);
+      
+      // Reset unsaved changes for new slide
+      setHasUnsavedChanges(false);
+    };
+
+    if (selectedSlideId) {
+      if (!previousSlideId) {
+        // Initial load - just set the tracking state
+        setPreviousSlideId(selectedSlideId);
+        setPreviousSlideshowId(selectedSlideshowId);
+        setHasUnsavedChanges(false);
+      } else if (previousSlideId !== selectedSlideId) {
+        // Slide changed - trigger auto-save
+        handleSlideChange();
+      }
+    }
+  }, [selectedSlideId, selectedSlideshowId]);
 
   // Cleanup function for fabric canvases
   const disposeCanvas = (slideId: string) => {
@@ -269,6 +342,8 @@ export default function SlideshowEditor() {
       disposeMiniCanvas(slideId);
     }
   };
+
+
 
   // Cleanup all canvases on unmount
   useEffect(() => {
@@ -660,7 +735,20 @@ export default function SlideshowEditor() {
     canvas.renderAll();
   };
 
-  const handleSlideSelect = (slideId: string) => {
+  const handleSlideSelect = async (slideId: string) => {
+    // Auto-save current slide if it has unsaved changes before switching
+    if (hasUnsavedChanges && selectedSlideId && currentSlide && selectedSlideId !== slideId) {
+      console.log('Auto-saving before slide selection...');
+      try {
+        await autoSaveSlide(selectedSlideId, currentSlide);
+        console.log('Pre-selection auto-save completed');
+        // Clear unsaved changes after successful save
+        setHasUnsavedChanges(false);
+      } catch (error) {
+        console.error('Failed to auto-save before slide selection:', error);
+      }
+    }
+
     // Dispose canvases from other slides to prevent DOM conflicts
     Object.keys(canvasRefs.current).forEach(id => {
       if (id !== slideId) {
@@ -676,26 +764,7 @@ export default function SlideshowEditor() {
     setSelectedSlideId(slideId);
     
     // Manually center the slide within the fixed container
-    setTimeout(() => {
-      if (scrollContainerRef.current) {
-        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`) as HTMLElement;
-        if (slideElement) {
-          const container = scrollContainerRef.current;
-          const containerWidth = container.clientWidth;
-          const slideLeft = slideElement.offsetLeft;
-          const slideWidth = slideElement.offsetWidth;
-          
-          // Calculate scroll position to center the slide within the fixed container
-          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
-          
-          // Smooth scroll to the calculated position
-          container.scrollTo({
-            left: scrollLeft,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 50);
+    centerSlide(slideId, 50);
   };
 
   const handleAddSlide = async () => {
@@ -737,24 +806,7 @@ export default function SlideshowEditor() {
     setSelectedSlideId(tempSlideId);
     
     // Center the new slide
-    setTimeout(() => {
-      if (scrollContainerRef.current) {
-        const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${tempSlideId}"]`) as HTMLElement;
-        if (slideElement) {
-          const container = scrollContainerRef.current;
-          const containerWidth = container.clientWidth;
-          const slideLeft = slideElement.offsetLeft;
-          const slideWidth = slideElement.offsetWidth;
-          
-          const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
-          
-          container.scrollTo({
-            left: scrollLeft,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 50);
+    centerSlide(tempSlideId, 50);
     
     // Now add to database in the background
     try {
@@ -855,26 +907,7 @@ export default function SlideshowEditor() {
       setSelectedSlideId(slideToSelect.id);
       
       // Center the newly selected slide after deletion
-      setTimeout(() => {
-        if (scrollContainerRef.current) {
-          const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideToSelect.id}"]`) as HTMLElement;
-          if (slideElement) {
-            const container = scrollContainerRef.current;
-            const containerWidth = container.clientWidth;
-            const slideLeft = slideElement.offsetLeft;
-            const slideWidth = slideElement.offsetWidth;
-            
-            // Calculate scroll position to center the slide within the fixed container
-            const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
-            
-            // Smooth scroll to the calculated position
-            container.scrollTo({
-              left: scrollLeft,
-              behavior: 'smooth'
-            });
-          }
-        }
-      }, 100); // Delay to allow for re-render after deletion
+      centerSlide(slideToSelect.id, 100); // Delay to allow for re-render after deletion
     }
 
     // Perform database operations in the background
@@ -1014,6 +1047,7 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
+      console.log('Setting hasUnsavedChanges to true for text update');
       setHasUnsavedChanges(true);
     }
   };
@@ -1034,6 +1068,7 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
+      console.log('Setting hasUnsavedChanges to true for overlay update');
       setHasUnsavedChanges(true);
     }
   };
@@ -1185,17 +1220,49 @@ export default function SlideshowEditor() {
     }
   };
 
+  // Auto-save function that can save any slide's data
+  const autoSaveSlide = async (slideId: string, slideData: Slide, silent: boolean = true) => {
+    if (!slideId || !slideData) {
+      console.log('Auto-save skipped: missing slideId or slideData');
+      return;
+    }
+
+    console.log('Auto-save starting for slide:', slideId, {
+      textsCount: slideData.texts?.length || 0,
+      overlaysCount: slideData.overlays?.length || 0,
+      silent
+    });
+
+    try {
+      if (!silent) setIsSaving(true);
+      
+      // Save both text and overlay data to Supabase
+      await Promise.all([
+        saveSlideTexts(slideId, slideData.texts || []),
+        saveSlideOverlays(slideId, slideData.overlays || [])
+      ]);
+      
+      console.log('Auto-save completed successfully for slide:', slideId);
+      if (!silent) {
+        console.log('Slide auto-saved successfully');
+      }
+    } catch (error) {
+      console.error('Failed to auto-save slide:', slideId, error);
+      // Don't show alert for auto-save failures to avoid interrupting user flow
+      throw error; // Re-throw so calling code can handle it
+    } finally {
+      if (!silent) setIsSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!currentSlide || !selectedSlideId) return;
 
     try {
       setIsSaving(true);
       
-      // Save both text and overlay data to Supabase
-      await Promise.all([
-        saveSlideTexts(selectedSlideId, currentSlide.texts || []),
-        saveSlideOverlays(selectedSlideId, currentSlide.overlays || [])
-      ]);
+      // Use the auto-save function but with visual feedback
+      await autoSaveSlide(selectedSlideId, currentSlide, false);
       
       // Mark as saved
       setHasUnsavedChanges(false);
@@ -1267,9 +1334,20 @@ export default function SlideshowEditor() {
               {displaySlideshows.map((slideshow: Slideshow) => (
               <button
                 key={slideshow.id}
-                onClick={() => {
+                onClick={async () => {
+                  // Auto-save current slide if it has unsaved changes before switching slideshows
+                  if (hasUnsavedChanges && selectedSlideId && currentSlide) {
+                    console.log('Auto-saving before switching slideshows...');
+                    await autoSaveSlide(selectedSlideId, currentSlide);
+                  }
+                  
                   setSelectedSlideshowId(slideshow.id);
                   setSelectedSlideId(slideshow.slides[0]?.id || '');
+                  
+                  // Center the first slide of the selected slideshow after a delay
+                  if (slideshow.slides.length > 0) {
+                    centerSlide(slideshow.slides[0].id, 100);
+                  }
                 }}
                 className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                   selectedSlideshowId === slideshow.id
@@ -1336,7 +1414,7 @@ export default function SlideshowEditor() {
                   )}
                   
                   <button
-                    onClick={() => handleSlideSelect(slide.id)}
+                    onClick={async () => await handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
                       selectedSlideId === slide.id
                         ? 'scale-110 opacity-100'
