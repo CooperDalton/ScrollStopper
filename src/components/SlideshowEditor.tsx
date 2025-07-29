@@ -562,7 +562,9 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontFamily: textData.font,
+        fontFamily: '"proxima-nova", sans-serif',
+        fontWeight: '600',
+        fontStyle: 'normal',
         fontSize: textData.size, // This is now the effective font size
         fill: '#000000',
         textAlign: 'center',
@@ -684,7 +686,9 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontFamily: textData.font,
+        fontFamily: '"proxima-nova", sans-serif',
+        fontWeight: '600',
+        fontStyle: 'normal',
         fontSize: textData.size,
         fill: '#000000',
         textAlign: 'center',
@@ -969,7 +973,7 @@ export default function SlideshowEditor() {
       position_y: 250,
       size: 24,
       rotation: 0,
-      font: 'Arial',
+      font: '"proxima-nova", sans-serif',
       created_at: new Date().toISOString()
     };
 
@@ -991,7 +995,9 @@ export default function SlideshowEditor() {
     const fabricText = new fabric.IText(newText.text, {
       left: newText.position_x,
       top: newText.position_y,
-      fontFamily: newText.font,
+      fontFamily: '"proxima-nova", sans-serif',
+      fontWeight: '600',
+      fontStyle: 'normal',
       fontSize: newText.size,
       fill: '#000000',
       textAlign: 'center',
@@ -1406,7 +1412,7 @@ export default function SlideshowEditor() {
                     <div className="absolute -top-20 left-67 z-20">
                       <button
                         onClick={() => handleDeleteSlide(slide.id)}
-                        className="flex items-center justify-center w-12 h-12 bg-gray-300 hover:bg-gray-500 text-red-500 rounded-full shadow-lg transition-colors"
+                        className="flex items-center justify-center w-12 h-12 bg-gray-100 hover:bg-gray-200 text-red-500 rounded-full shadow-lg transition-colors"
                       >
                         <TrashIcon />
                       </button>
@@ -1417,8 +1423,8 @@ export default function SlideshowEditor() {
                     onClick={async () => await handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
                       selectedSlideId === slide.id
-                        ? 'scale-110 opacity-100'
-                        : 'scale-90 opacity-60 hover:opacity-80 hover:scale-95'
+                        ? 'scale-110'
+                        : 'scale-90 hover:scale-95'
                     }`}
                   >
                     <div className={`relative ${
@@ -1494,32 +1500,32 @@ export default function SlideshowEditor() {
 
         {/* Control Panel - Fixed position in center of slides area */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-          <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 shadow-lg">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
             <div className="flex items-center gap-4">
               <button 
                 onClick={() => setIsBackgroundModalOpen(true)}
-                className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
                 title="Background"
               >
                 <BackgroundIcon />
               </button>
               <button 
                 onClick={handleAddText}
-                className="p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
                 title="Add Text"
               >
                 <TextIcon />
               </button>
               <button 
                 onClick={() => setIsImageModalOpen(true)}
-                className="p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
                 title="Add Image"
               >
                 <ImageIcon />
               </button>
               <button 
                 onClick={handleDurationClick}
-                className="px-4 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                className="px-4 py-2 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Slide Duration"
               >
                 {currentSlide?.duration_seconds || 3}s
