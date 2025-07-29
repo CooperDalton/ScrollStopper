@@ -91,8 +91,31 @@ export default function SlideshowEditor() {
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
-    strokeWidth: Math.max(1, Math.round(fontSize * 0.03)), // 8% of font size, minimum 1px
+    strokeWidth: Math.max(1, Math.round(fontSize * 0.04)), // 4% of font size, minimum 1px
   });
+
+  // Helper function to snap rotation angles to 90-degree increments
+  const snapAngle = (angle: number, threshold: number = 8) => {
+    // Normalize angle to 0-360 range
+    let normalizedAngle = ((angle % 360) + 360) % 360;
+    
+    // Define snap targets
+    const snapTargets = [0, 90, 180, 270];
+    
+    // Check if angle is close to any snap target
+    for (const target of snapTargets) {
+      if (Math.abs(normalizedAngle - target) <= threshold) {
+        return target;
+      }
+    }
+    
+    // Check for 360° wrapping (close to 0°)
+    if (normalizedAngle > 360 - threshold) {
+      return 0;
+    }
+    
+    return angle; // Return original angle if no snapping needed
+  };
 
   // Reusable function to center a slide within the container
   const centerSlide = (slideId: string, delay: number = 50) => {
@@ -1040,7 +1063,16 @@ export default function SlideshowEditor() {
       // When users resize by dragging corners, Fabric.js applies scaleX/scaleY
       const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
       textData.size = Math.round(effectiveFontSize);
-      textData.rotation = fabricText.angle || 0;
+      
+      // Apply angle snapping for 90-degree increments
+      const originalAngle = fabricText.angle || 0;
+      const snappedAngle = snapAngle(originalAngle);
+      textData.rotation = snappedAngle;
+      
+      // Update fabric object if angle was snapped
+      if (snappedAngle !== originalAngle) {
+        fabricText.set('angle', snappedAngle);
+      }
       
       // Update local state to persist changes when switching slides
       updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
@@ -1060,7 +1092,17 @@ export default function SlideshowEditor() {
     if (overlayData) {
       overlayData.position_x = fabricImage.left || 0;
       overlayData.position_y = fabricImage.top || 0;
-      overlayData.rotation = fabricImage.angle || 0;
+      
+      // Apply angle snapping for 90-degree increments
+      const originalAngle = fabricImage.angle || 0;
+      const snappedAngle = snapAngle(originalAngle);
+      overlayData.rotation = snappedAngle;
+      
+      // Update fabric object if angle was snapped
+      if (snappedAngle !== originalAngle) {
+        fabricImage.set('angle', snappedAngle);
+      }
+      
       overlayData.size = Math.round((fabricImage.scaleX || 1) * 100);
       
       // Update local state to persist changes when switching slides
