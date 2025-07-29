@@ -72,6 +72,13 @@ export default function SlideshowEditor() {
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
+  // Track selected text object for resize controls
+  const [selectedTextObject, setSelectedTextObject] = useState<{
+    fabricObject: fabric.IText;
+    textId: string;
+    position: { x: number; y: number };
+  } | null>(null);
+  
   // Track previous slide for auto-save functionality
   const [previousSlideId, setPreviousSlideId] = useState<string>('');
   const [previousSlideshowId, setPreviousSlideshowId] = useState<string>('');
@@ -91,7 +98,9 @@ export default function SlideshowEditor() {
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
-    strokeWidth: Math.max(1, Math.round(fontSize * 0.04)), // 4% of font size, minimum 1px
+    strokeWidth: Math.max(1, Math.round(fontSize * 0.05)), // 4% of font size, minimum 1px
+    charSpacing: -50, // Decreased letter spacing
+    lineHeight: 1.0, // Reduced line spacing
   });
 
   // Helper function to snap rotation angles to 90-degree increments
@@ -237,6 +246,12 @@ export default function SlideshowEditor() {
     if (canvasRefs.current[slideId]) {
       try {
         const canvas = canvasRefs.current[slideId];
+        
+        // Clear the position update interval if it exists
+        if ((canvas as any).positionUpdateInterval) {
+          clearInterval((canvas as any).positionUpdateInterval);
+        }
+        
         // Check if canvas element is still in DOM before disposing
         const canvasElement = canvasElementRefs.current[slideId];
         if (canvasElement && canvasElement.parentNode && canvasElement.isConnected) {
@@ -540,6 +555,56 @@ export default function SlideshowEditor() {
       // Store references
       canvasRefs.current[slideId] = canvas;
       canvasElementRefs.current[slideId] = canvasElement;
+      
+      // Add canvas selection event listeners
+      canvas.on('selection:cleared', () => {
+        setSelectedTextObject(null);
+      });
+      
+      canvas.on('selection:created', (e: any) => {
+        const activeObject = e.selected?.[0];
+        if (activeObject && activeObject.get('textId')) {
+          // Text object selected, show resize controls
+          setSelectedTextObject({
+            fabricObject: activeObject,
+            textId: activeObject.get('textId'),
+            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+          });
+        } else {
+          // Non-text object selected, clear text selection
+          setSelectedTextObject(null);
+        }
+      });
+      
+      canvas.on('selection:updated', (e: any) => {
+        const activeObject = e.selected?.[0];
+        if (activeObject && activeObject.get('textId')) {
+          // Text object selected, show resize controls
+          setSelectedTextObject({
+            fabricObject: activeObject,
+            textId: activeObject.get('textId'),
+            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+          });
+        } else {
+          // Non-text object selected, clear text selection
+          setSelectedTextObject(null);
+        }
+      });
+      
+      // Update button positions regularly for selected text
+      const updateInterval = setInterval(() => {
+        const activeObject = canvas.getActiveObject();
+        if (activeObject && activeObject.get('textId') && selectedTextObject && selectedTextObject.textId === activeObject.get('textId')) {
+          const currentPos = selectedTextObject.position;
+          const newPos = { x: activeObject.left || 0, y: activeObject.top || 0 };
+          if (currentPos.x !== newPos.x || currentPos.y !== newPos.y) {
+            setSelectedTextObject(prev => prev ? { ...prev, position: newPos } : null);
+          }
+        }
+      }, 50); // Update every 50ms
+      
+      // Store interval for cleanup
+      (canvas as any).positionUpdateInterval = updateInterval;
 
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
@@ -606,12 +671,16 @@ export default function SlideshowEditor() {
         ...getTextStyling(textData.size)
       });
 
-      // Disable stretching controls for text
+      // Disable all resize controls for text - only allow rotation and movement
       fabricText.setControlsVisibility({
         ml: false, // middle left
         mb: false, // middle bottom  
         mr: false, // middle right
         mt: false, // middle top
+        tl: false, // top left corner
+        tr: false, // top right corner
+        bl: false, // bottom left corner
+        br: false, // bottom right corner
       });
 
       // Store the text ID on the fabric object for later reference
@@ -622,6 +691,8 @@ export default function SlideshowEditor() {
       fabricText.on('moving', () => updateTextData(textData.id, fabricText));
       fabricText.on('rotating', () => updateTextData(textData.id, fabricText));
       fabricText.on('scaling', () => updateTextData(textData.id, fabricText));
+      
+      // Note: Selection handling is now done at the canvas level
 
       canvas.add(fabricText);
     });
@@ -791,6 +862,9 @@ export default function SlideshowEditor() {
 
     setSelectedSlideId(slideId);
     
+    // Clear text selection when changing slides
+    setSelectedTextObject(null);
+    
     // Manually center the slide within the fixed container
     centerSlide(slideId, 50);
   };
@@ -832,6 +906,9 @@ export default function SlideshowEditor() {
     
     // Select the new slide immediately
     setSelectedSlideId(tempSlideId);
+    
+    // Clear text selection when adding new slide
+    setSelectedTextObject(null);
     
     // Center the new slide
     centerSlide(tempSlideId, 50);
@@ -894,6 +971,9 @@ export default function SlideshowEditor() {
 
     // Set deletion flag to prevent canvas disposal conflicts
     setIsDeletingSlide(true);
+    
+    // Clear text selection when deleting slide
+    setSelectedTextObject(null);
 
     // Force React to completely remount all canvas elements by changing the key
     // This ensures clean slate and prevents any stale Fabric.js references
@@ -1025,12 +1105,16 @@ export default function SlideshowEditor() {
       ...getTextStyling(newText.size)
     });
 
-    // Disable stretching controls for text
+    // Disable all resize controls for text - only allow rotation and movement
     fabricText.setControlsVisibility({
       ml: false, // middle left
       mb: false, // middle bottom  
       mr: false, // middle right
       mt: false, // middle top
+      tl: false, // top left corner
+      tr: false, // top right corner
+      bl: false, // bottom left corner
+      br: false, // bottom right corner
     });
 
     // Store the text ID on the fabric object for later reference
@@ -1041,6 +1125,8 @@ export default function SlideshowEditor() {
     fabricText.on('moving', () => updateTextData(textId, fabricText));
     fabricText.on('rotating', () => updateTextData(textId, fabricText));
     fabricText.on('scaling', () => updateTextData(textId, fabricText));
+    
+    // Note: Selection handling is now done at the canvas level
 
     canvas.add(fabricText);
     canvas.setActiveObject(fabricText);
@@ -1072,6 +1158,23 @@ export default function SlideshowEditor() {
       // Update fabric object if angle was snapped
       if (snappedAngle !== originalAngle) {
         fabricText.set('angle', snappedAngle);
+      }
+      
+      // Update stroke width based on new font size
+      const newStrokeWidth = Math.max(1, Math.round(effectiveFontSize * 0.05));
+      console.log('Updating stroke width:', newStrokeWidth, 'for font size:', effectiveFontSize);
+      fabricText.set('strokeWidth', newStrokeWidth);
+      
+      // Clear the text object's cache to force re-render with new stroke width
+      if (fabricText._clearCache) {
+        fabricText._clearCache();
+      }
+      fabricText.dirty = true; // Mark object as needing re-render
+      
+      // Force canvas re-render to show stroke width changes
+      const canvas = canvasRefs.current[selectedSlideId];
+      if (canvas) {
+        canvas.renderAll();
       }
       
       // Update local state to persist changes when switching slides
@@ -1478,23 +1581,56 @@ export default function SlideshowEditor() {
                     } ${selectedSlideId === slide.id ? '' : ''} bg-white`}>
                       
                       {selectedSlideId === slide.id ? (
-                        <canvas
-                          key={`canvas-${slide.id}-${slideRenderKey}`}
-                          ref={(el) => {
-                            if (el && !canvasRefs.current[slide.id]) {
-                              // Use requestAnimationFrame to ensure DOM is ready
-                              requestAnimationFrame(() => {
-                                // Double-check the element is still in DOM before initializing
-                                if (el.parentNode && !canvasRefs.current[slide.id]) {
-                                  initializeCanvas(slide.id, el);
-                                }
-                              });
-                            }
-                          }}
-                          width="300"
-                          height="533"
-                          className="w-full h-full"
-                        />
+                        <div className="relative w-full h-full">
+                          <canvas
+                            key={`canvas-${slide.id}-${slideRenderKey}`}
+                            ref={(el) => {
+                              if (el && !canvasRefs.current[slide.id]) {
+                                // Use requestAnimationFrame to ensure DOM is ready
+                                requestAnimationFrame(() => {
+                                  // Double-check the element is still in DOM before initializing
+                                  if (el.parentNode && !canvasRefs.current[slide.id]) {
+                                    initializeCanvas(slide.id, el);
+                                  }
+                                });
+                              }
+                            }}
+                            width="300"
+                            height="533"
+                            className="w-full h-full"
+                          />
+                          
+                          {/* Text Resize Controls */}
+                          {selectedTextObject && selectedSlideId === slide.id && (
+                            <div 
+                              className="absolute flex items-center gap-2 z-50"
+                              style={{
+                                left: `${(selectedTextObject.position.x / 300) * 100}%`,
+                                top: `${((selectedTextObject.position.y + 30) / 533) * 100}%`,
+                                transform: 'translateX(-50%)'
+                              }}
+                            >
+                              <button
+                                className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors font-bold text-lg shadow-lg"
+                                onClick={() => {
+                                  // TODO: Decrease text size
+                                  console.log('Decrease text size');
+                                }}
+                              >
+                                −
+                              </button>
+                              <button
+                                className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors font-bold text-lg shadow-lg"
+                                onClick={() => {
+                                  // TODO: Increase text size
+                                  console.log('Increase text size');
+                                }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <canvas
                           key={`mini-canvas-${slide.id}-${slideRenderKey}`}
