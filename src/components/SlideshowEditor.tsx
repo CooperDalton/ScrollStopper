@@ -81,6 +81,19 @@ export default function SlideshowEditor() {
   const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
+  // Reusable function to get text styling properties
+  const getTextStyling = (fontSize: number = 24) => ({
+    fontFamily: '"proxima-nova", sans-serif',
+    fontWeight: '600',
+    fontStyle: 'normal',
+    fill: '#ffffff',
+    textAlign: 'center' as const,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    stroke: 'black',
+    strokeWidth: Math.max(1, Math.round(fontSize * 0.03)), // 8% of font size, minimum 1px
+  });
+
   // Reusable function to center a slide within the container
   const centerSlide = (slideId: string, delay: number = 50) => {
     setTimeout(() => {
@@ -562,18 +575,12 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontFamily: '"proxima-nova", sans-serif',
-        fontWeight: '600',
-        fontStyle: 'normal',
         fontSize: textData.size, // This is now the effective font size
-        fill: '#000000',
-        textAlign: 'center',
-        originX: 'center',
-        originY: 'center',
         angle: textData.rotation,
         scaleX: 1, // Reset scale to 1 since we're using effective fontSize
         scaleY: 1, // Reset scale to 1 since we're using effective fontSize
-        lockUniScaling: true
+        lockUniScaling: true,
+        ...getTextStyling(textData.size)
       });
 
       // Disable stretching controls for text
@@ -686,20 +693,14 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontFamily: '"proxima-nova", sans-serif',
-        fontWeight: '600',
-        fontStyle: 'normal',
         fontSize: textData.size,
-        fill: '#000000',
-        textAlign: 'center',
-        originX: 'center',
-        originY: 'center',
         angle: textData.rotation,
         scaleX: 1,
         scaleY: 1,
         lockUniScaling: true,
         selectable: false,
-        evented: false
+        evented: false,
+        ...getTextStyling(textData.size)
       });
 
       canvas.add(fabricText);
@@ -995,16 +996,10 @@ export default function SlideshowEditor() {
     const fabricText = new fabric.IText(newText.text, {
       left: newText.position_x,
       top: newText.position_y,
-      fontFamily: '"proxima-nova", sans-serif',
-      fontWeight: '600',
-      fontStyle: 'normal',
       fontSize: newText.size,
-      fill: '#000000',
-      textAlign: 'center',
-      originX: 'center',
-      originY: 'center',
       angle: newText.rotation,
-      lockUniScaling: true
+      lockUniScaling: true,
+      ...getTextStyling(newText.size)
     });
 
     // Disable stretching controls for text
@@ -1116,6 +1111,9 @@ export default function SlideshowEditor() {
           });
           img.scaleToWidth(300);
           canvas.add(img);
+          
+          // Ensure proper layering after adding background
+          ensureProperLayering(canvas);
           canvas.renderAll();
         }).catch((error) => {
           console.warn('Failed to load selected background image:', imageUrl, error);
