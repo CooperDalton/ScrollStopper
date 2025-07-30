@@ -72,6 +72,10 @@ export default function SlideshowEditor() {
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
+  // Preset sizing options for text
+  const fontSizes = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 44, 48];
+  const strokeWidths = fontSizes.map(size => Math.max(1, Math.round(size * 0.05)));
+
   // Track selected text object for resize controls
   const [selectedTextObject, setSelectedTextObject] = useState<{
     fabricObject: fabric.IText;
@@ -84,27 +88,62 @@ export default function SlideshowEditor() {
     position: { x: number; y: number };
   } | null>(null);
 
+  const [isTextDragging, setIsTextDragging] = useState(false);
+
+  const getButtonPosition = (textObj: fabric.IText) => {
+    textObj.setCoords();
+    const rect = textObj.getBoundingRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height
+    };
+  };
+
   const updateSelectedTextObject = (
     obj: {
       fabricObject: fabric.IText;
       textId: string;
-      position: { x: number; y: number };
     } | null
   ) => {
-    setSelectedTextObject(obj);
-    selectedTextObjectRef.current = obj;
+    if (!obj) {
+      setSelectedTextObject(null);
+      selectedTextObjectRef.current = null;
+      return;
+    }
+    const position = getButtonPosition(obj.fabricObject);
+    const updated = { ...obj, position };
+    setSelectedTextObject(updated);
+    selectedTextObjectRef.current = updated;
   };
 
   const adjustFontSize = (delta: number) => {
     const current = selectedTextObjectRef.current;
     if (!current) return;
     const obj = current.fabricObject;
-    const newSize = Math.max((obj.fontSize || 24) + delta, 1);
+    const currentSize = obj.fontSize || 24;
+    const findNearestIndex = (size: number) => {
+      let nearest = 0;
+      for (let i = 1; i < fontSizes.length; i++) {
+        if (Math.abs(fontSizes[i] - size) < Math.abs(fontSizes[nearest] - size)) {
+          nearest = i;
+        }
+      }
+      return nearest;
+    };
+    const currentIndex = findNearestIndex(currentSize);
+    const newIndex = Math.min(
+      fontSizes.length - 1,
+      Math.max(0, currentIndex + (delta > 0 ? 1 : -1))
+    );
+    const newSize = fontSizes[newIndex];
+    const newStroke = strokeWidths[newIndex];
     obj.set({ fontSize: newSize, scaleX: 1, scaleY: 1 });
-    obj.set('strokeWidth', Math.max(1, Math.round(newSize * 0.05)));
+    obj.set('strokeWidth', newStroke);
     obj.setCoords();
     obj.canvas?.renderAll();
     updateTextData(current.textId, obj);
+    // Update button position based on new size
+    updateSelectedTextObject({ fabricObject: obj, textId: current.textId });
   };
   
   // Track previous slide for auto-save functionality
@@ -275,10 +314,6 @@ export default function SlideshowEditor() {
       try {
         const canvas = canvasRefs.current[slideId];
         
-        // Clear the position update interval if it exists
-        if ((canvas as any).positionUpdateInterval) {
-          clearInterval((canvas as any).positionUpdateInterval);
-        }
         
         // Check if canvas element is still in DOM before disposing
         const canvasElement = canvasElementRefs.current[slideId];
@@ -586,18 +621,13 @@ export default function SlideshowEditor() {
       
       // Add canvas selection event listeners with improved logic
       const handleSelectionChange = () => {
-        // Always check the actual canvas state rather than relying solely on events
         const activeObject = canvas.getActiveObject();
-        
         if (activeObject && activeObject.get('textId')) {
-          // Text object is selected, show resize controls
           updateSelectedTextObject({
             fabricObject: activeObject as fabric.IText,
-            textId: activeObject.get('textId'),
-            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+            textId: activeObject.get('textId')
           });
         } else {
-          // No text object selected, clear text selection
           updateSelectedTextObject(null);
         }
       };
@@ -616,41 +646,26 @@ export default function SlideshowEditor() {
       canvas.on('selection:created', handleSelectionChange);
       canvas.on('selection:updated', handleSelectionChange);
       
-      // Add mouse events for more robust tracking
+      // Hide controls while dragging and show when released
+      canvas.on('mouse:down', () => {
+        const activeObject = canvas.getActiveObject();
+        if (activeObject && activeObject.get('textId')) {
+          setIsTextDragging(true);
+        }
+      });
+
       canvas.on('mouse:up', () => {
         setTimeout(() => {
+          setIsTextDragging(false);
           const activeObject = canvas.getActiveObject();
           if (activeObject && activeObject.get('textId')) {
             updateSelectedTextObject({
               fabricObject: activeObject as fabric.IText,
-              textId: activeObject.get('textId'),
-              position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+              textId: activeObject.get('textId')
             });
           }
         }, 25);
       });
-      
-      // Update button positions regularly for selected text
-      const updateInterval = setInterval(() => {
-        const activeObject = canvas.getActiveObject();
-        const current = selectedTextObjectRef.current;
-        if (
-          activeObject &&
-          activeObject.get('textId') &&
-          current &&
-          current.textId === activeObject.get('textId')
-        ) {
-          const newPos = { x: activeObject.left || 0, y: activeObject.top || 0 };
-          if (current.position.x !== newPos.x || current.position.y !== newPos.y) {
-            const updated = { ...current, position: newPos };
-            selectedTextObjectRef.current = updated;
-            setSelectedTextObject(updated);
-          }
-        }
-      }, 50); // Update every 50ms
-      
-      // Store interval for cleanup
-      (canvas as any).positionUpdateInterval = updateInterval;
 
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
@@ -1239,13 +1254,7 @@ export default function SlideshowEditor() {
         selectedTextObjectRef.current &&
         selectedTextObjectRef.current.textId === textId
       ) {
-        const updated = {
-          fabricObject: fabricText,
-          textId,
-          position: { x: fabricText.left || 0, y: fabricText.top || 0 }
-        };
-        selectedTextObjectRef.current = updated;
-        setSelectedTextObject(updated);
+        updateSelectedTextObject({ fabricObject: fabricText, textId });
       }
     }
   };
@@ -1625,20 +1634,20 @@ export default function SlideshowEditor() {
                   )}
                   
                   {/* Text Resize Controls - Positioned outside the button to avoid nesting */}
-                  {selectedTextObject && selectedSlideId === slide.id && (
-                    <div 
+                  {selectedTextObject && !isTextDragging && selectedSlideId === slide.id && (
+                    <div
                       className="absolute flex items-center gap-2 z-50 pointer-events-none"
                       style={{
                         left: `${(selectedTextObject.position.x / 300) * 100}%`,
-                        top: `${((selectedTextObject.position.y + 30) / 533) * 100}%`,
-                        transform: 'translateX(-50%)'
+                        top: `${(selectedTextObject.position.y / 533) * 100}%`,
+                        transform: 'translate(-50%, 0)'
                       }}
                     >
                       <button
                         className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
                         onClick={(e) => {
                           e.stopPropagation();
-                          adjustFontSize(-2);
+                          adjustFontSize(-1);
                         }}
                       >
                         −
@@ -1647,7 +1656,7 @@ export default function SlideshowEditor() {
                         className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
                         onClick={(e) => {
                           e.stopPropagation();
-                          adjustFontSize(2);
+                          adjustFontSize(1);
                         }}
                       >
                         +
