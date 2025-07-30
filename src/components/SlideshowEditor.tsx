@@ -74,7 +74,7 @@ export default function SlideshowEditor() {
   
   // Preset sizing options for text
   const fontSizes = [20, 24, 32, 40, 48, 56, 64];
-  const strokeWidths = [1, 1, 1, 1, 1, 1, 1, 1];
+  const strokeWidths = [0.5, 0.5, 1, 1, 1, 1, 1];
   
   // Helper function to get stroke width from the strokeWidths array based on font size
   const getStrokeWidthForFontSize = (fontSize: number) => {
@@ -92,8 +92,7 @@ export default function SlideshowEditor() {
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
-    strokeWidth: getStrokeWidthForFontSize(fontSize), // Use strokeWidths array
-    charSpacing: -50, // Decreased letter spacing
+    charSpacing: -40, // Decreased letter spacing
     lineHeight: 1.0, // Reduced line spacing
   });
 
@@ -1243,9 +1242,11 @@ export default function SlideshowEditor() {
       textData.text = fabricText.text || 'text';
       textData.position_x = fabricText.left || 0;
       textData.position_y = fabricText.top || 0;
+      
       // For text, we need to account for both fontSize and scaling
       // When users resize by dragging corners, Fabric.js applies scaleX/scaleY
       const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
+      const previousSize = textData.size;
       textData.size = Math.round(effectiveFontSize);
       
       // Apply angle snapping for 90-degree increments
@@ -1258,21 +1259,23 @@ export default function SlideshowEditor() {
         fabricText.set('angle', snappedAngle);
       }
       
-      // Update stroke width based on new font size using strokeWidths array
-      const newStrokeWidth = getStrokeWidthForFontSize(effectiveFontSize);
-      console.log('Updating stroke width:', newStrokeWidth, 'for font size:', effectiveFontSize);
-      fabricText.set('strokeWidth', newStrokeWidth);
-      
-      // Clear the text object's cache to force re-render with new stroke width
-      if (fabricText._clearCache) {
-        fabricText._clearCache();
-      }
-      fabricText.dirty = true; // Mark object as needing re-render
-      
-      // Force canvas re-render to show stroke width changes
-      const canvas = canvasRefs.current[selectedSlideId];
-      if (canvas) {
-        canvas.renderAll();
+      // Only update stroke width if the font size actually changed
+      if (previousSize !== textData.size) {
+        const newStrokeWidth = getStrokeWidthForFontSize(effectiveFontSize);
+        console.log('Updating stroke width:', newStrokeWidth, 'for font size:', effectiveFontSize);
+        fabricText.set('strokeWidth', newStrokeWidth);
+        
+        // Clear the text object's cache to force re-render with new stroke width
+        if (fabricText._clearCache) {
+          fabricText._clearCache();
+        }
+        fabricText.dirty = true; // Mark object as needing re-render
+        
+        // Force canvas re-render to show stroke width changes
+        const canvas = canvasRefs.current[selectedSlideId];
+        if (canvas) {
+          canvas.renderAll();
+        }
       }
       
       // Update local state to persist changes when switching slides
