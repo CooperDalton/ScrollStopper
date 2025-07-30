@@ -176,6 +176,36 @@ export default function SlideshowEditor() {
   const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
 
+  // Helper function to scale image to fill entire canvas background
+  const scaleImageToFillCanvas = (img: fabric.Image, canvasWidth: number, canvasHeight: number) => {
+    const imgWidth = img.width || 1;
+    const imgHeight = img.height || 1;
+    
+    // Calculate scale factors for both dimensions
+    const scaleX = canvasWidth / imgWidth;
+    const scaleY = canvasHeight / imgHeight;
+    
+    // Use the larger scale factor to ensure complete coverage
+    const scale = Math.max(scaleX, scaleY);
+    
+    // Apply the scale
+    img.set({
+      scaleX: scale,
+      scaleY: scale
+    });
+    
+    // Center the image on the canvas
+    const scaledWidth = imgWidth * scale;
+    const scaledHeight = imgHeight * scale;
+    
+    img.set({
+      left: (canvasWidth - scaledWidth) / 2,
+      top: (canvasHeight - scaledHeight) / 2,
+      originX: 'left',
+      originY: 'top'
+    });
+  };
+
   // Helper function to snap rotation angles to 90-degree increments
   const snapAngle = (angle: number, threshold: number = 8) => {
     // Normalize angle to 0-360 range
@@ -430,15 +460,14 @@ export default function SlideshowEditor() {
       if (slide?.backgroundImage) {
         fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
           img.set({
-            left: 0,
-            top: 0,
-            originX: 'left',
-            originY: 'top',
             selectable: false,
             evented: false,
             isBackground: true
           });
-          img.scaleToWidth(300);
+          
+          // Scale image to fill entire canvas background (mini canvas: 300x533)
+          scaleImageToFillCanvas(img, 300, 533);
+          
           canvas.add(img);
           canvas.renderAll();
           
@@ -678,15 +707,14 @@ export default function SlideshowEditor() {
       if (slide?.backgroundImage) {
         fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
           img.set({
-            left: 0,
-            top: 0,
-            originX: 'left',
-            originY: 'top',
             selectable: false,
             evented: false,
             isBackground: true
           });
-          img.scaleToWidth(300);
+          
+          // Scale image to fill entire canvas background (main canvas: 300x533)
+          scaleImageToFillCanvas(img, 300, 533);
+          
           canvas.add(img);
           canvas.renderAll();
           
@@ -1323,15 +1351,14 @@ export default function SlideshowEditor() {
         // Add new background image
         fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
           img.set({
-            left: 0,
-            top: 0,
-            originX: 'left',
-            originY: 'top',
             selectable: false,
             evented: false,
             isBackground: true
           });
-          img.scaleToWidth(300);
+          
+          // Scale image to fill entire canvas background (canvas: 300x533)
+          scaleImageToFillCanvas(img, 300, 533);
+          
           canvas.add(img);
           
           // Ensure proper layering after adding background
