@@ -64,6 +64,7 @@ export default function SlideshowEditor() {
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [newAspectRatio, setNewAspectRatio] = useState<string>('9:16');
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [localSlideshows, setLocalSlideshows] = useState<Slideshow[]>([]);
@@ -71,6 +72,11 @@ export default function SlideshowEditor() {
   const [isDeletingSlide, setIsDeletingSlide] = useState(false);
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const parseAspectRatio = (ratio: string) => {
+    const [w, h] = ratio.split(':').map(Number);
+    return w && h ? w / h : 9 / 16;
+  };
   
   // Preset sizing options for text
   const fontSizes = [20, 24, 32, 40, 48, 56, 64];
@@ -257,6 +263,12 @@ export default function SlideshowEditor() {
   const currentSlideshow = displaySlideshows.find((s: Slideshow) => s.id === selectedSlideshowId);
   const currentSlide = currentSlideshow?.slides.find((s: Slide) => s.id === selectedSlideId);
 
+  const aspectRatio = parseAspectRatio(currentSlideshow?.aspect_ratio || '9:16');
+  const CANVAS_WIDTH = 300;
+  const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio);
+  const MINI_CANVAS_WIDTH = 200;
+  const MINI_CANVAS_HEIGHT = Math.round(MINI_CANVAS_WIDTH / aspectRatio);
+
   // Helper function to update local slideshow state
   const updateLocalSlideshow = (slideshowId: string, slideId: string, updates: Partial<Slide>) => {
     const updatedSlideshows = displaySlideshows.map(slideshow => {
@@ -441,8 +453,8 @@ export default function SlideshowEditor() {
 
     try {
       const canvas = new fabric.Canvas(canvasElement, {
-        width: 300,
-        height: 533,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
         backgroundColor: '#ffffff'
       });
 
@@ -464,8 +476,8 @@ export default function SlideshowEditor() {
             isBackground: true
           });
           
-          // Scale image to fill entire canvas background (mini canvas: 300x533)
-          scaleImageToFillCanvas(img, 300, 533);
+          // Scale image to fill entire canvas background
+          scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
           
           canvas.add(img);
           canvas.renderAll();
@@ -644,8 +656,8 @@ export default function SlideshowEditor() {
 
     try {
       const canvas = new fabric.Canvas(canvasElement, {
-        width: 300,
-        height: 533,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
         backgroundColor: '#ffffff'
       });
 
@@ -711,8 +723,8 @@ export default function SlideshowEditor() {
             isBackground: true
           });
           
-          // Scale image to fill entire canvas background (main canvas: 300x533)
-          scaleImageToFillCanvas(img, 300, 533);
+          // Scale image to fill entire canvas background
+          scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
           
           canvas.add(img);
           canvas.renderAll();
@@ -1170,8 +1182,8 @@ export default function SlideshowEditor() {
       id: textId,
       slide_id: selectedSlideId,
       text: 'text',
-      position_x: 150,
-      position_y: 250,
+      position_x: CANVAS_WIDTH / 2,
+      position_y: CANVAS_HEIGHT / 2,
       size: 24,
       rotation: 0,
       font: '"proxima-nova", sans-serif',
@@ -1359,8 +1371,8 @@ export default function SlideshowEditor() {
             isBackground: true
           });
           
-          // Scale image to fill entire canvas background (canvas: 300x533)
-          scaleImageToFillCanvas(img, 300, 533);
+          // Scale image to fill entire canvas background
+          scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
           
           canvas.add(img);
           
@@ -1394,8 +1406,8 @@ export default function SlideshowEditor() {
     if (canvas) {
       fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
         // Calculate smart sizing based on image dimensions
-        const canvasWidth = 300;
-        const canvasHeight = 533;
+        const canvasWidth = CANVAS_WIDTH;
+        const canvasHeight = CANVAS_HEIGHT;
         const targetWidth = canvasWidth * 0.5; // Half the canvas width
         const targetHeight = canvasHeight * 0.5; // Half the canvas height
         
@@ -1415,8 +1427,8 @@ export default function SlideshowEditor() {
           id: overlayId,
           slide_id: selectedSlideId,
           image_id: imageId,
-          position_x: 150,
-          position_y: 250,
+          position_x: CANVAS_WIDTH / 2,
+          position_y: CANVAS_HEIGHT / 2,
           rotation: 0,
           size: optimalScalePercent,
           created_at: new Date().toISOString(),
@@ -1535,7 +1547,7 @@ export default function SlideshowEditor() {
   const handleCreateSlideshow = async () => {
     try {
       setIsCreating(true);
-      const newSlideshow = await createSlideshow();
+      const newSlideshow = await createSlideshow(undefined, undefined, newAspectRatio);
       
       // Select the newly created slideshow and its first slide
       setSelectedSlideshowId(newSlideshow.id);
@@ -1561,14 +1573,25 @@ export default function SlideshowEditor() {
 
         {/* Create Slideshow Button */}
         <div className="p-4 border-b border-[var(--color-border)]">
-          <button
-            onClick={handleCreateSlideshow}
-            disabled={isCreating}
-            className="w-full flex items-center justify-center gap-2 p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <PlusIcon />
-            {isCreating ? 'Creating...' : 'New Slideshow'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCreateSlideshow}
+              disabled={isCreating}
+              className="flex-1 flex items-center justify-center gap-2 p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <PlusIcon />
+              {isCreating ? 'Creating...' : 'New Slideshow'}
+            </button>
+            <select
+              value={newAspectRatio}
+              onChange={(e) => setNewAspectRatio(e.target.value)}
+              className="p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)]"
+            >
+              <option value="9:16">9:16</option>
+              <option value="1:1">1:1</option>
+              <option value="4:5">4:5</option>
+            </select>
+          </div>
         </div>
 
         {/* Slideshows List */}
@@ -1674,8 +1697,8 @@ export default function SlideshowEditor() {
                     <div
                       className="absolute flex items-center gap-2 z-50 pointer-events-none"
                       style={{
-                        left: `${(selectedTextObject.position.x / 300) * 100}%`,
-                        top: `${(selectedTextObject.position.y / 533) * 100}%`,
+                        left: `${(selectedTextObject.position.x / CANVAS_WIDTH) * 100}%`,
+                        top: `${(selectedTextObject.position.y / CANVAS_HEIGHT) * 100}%`,
                         transform: 'translate(-50%, 0)'
                       }}
                     >
@@ -1708,15 +1731,14 @@ export default function SlideshowEditor() {
                         : 'scale-90 hover:scale-95'
                     }`}
                   >
-                    <div className={`relative ${
-                      selectedSlideId === slide.id
-                        ? 'w-[300px] h-[533px]' // Less huge selected slide
-                        : 'w-[300px] h-[533px]' // Smaller non-selected slides
-                    } rounded-2xl overflow-hidden border-4 ${
+                    <div
+                      className={`relative rounded-2xl overflow-hidden border-4 ${
                       selectedSlideId === slide.id
                         ? 'border-[var(--color-primary)]'
                         : 'border-[var(--color-border)]'
-                    } ${selectedSlideId === slide.id ? '' : ''} bg-white`}>
+                      } ${selectedSlideId === slide.id ? '' : ''} bg-white`}
+                      style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
+                    >
                       
                       {selectedSlideId === slide.id ? (
                         <div className="relative w-full h-full">
@@ -1733,8 +1755,8 @@ export default function SlideshowEditor() {
                                 });
                               }
                             }}
-                            width="300"
-                            height="533"
+                            width={CANVAS_WIDTH}
+                            height={CANVAS_HEIGHT}
                             className="w-full h-full"
                           />
                         </div>
@@ -1752,8 +1774,8 @@ export default function SlideshowEditor() {
                               });
                             }
                           }}
-                          width="300"
-                          height="533"
+                          width={CANVAS_WIDTH}
+                          height={CANVAS_HEIGHT}
                           className="w-full h-full"
                         />
                       )}
@@ -1766,7 +1788,8 @@ export default function SlideshowEditor() {
               <div className="flex-shrink-0 flex items-center justify-center">
                 <button
                   onClick={handleAddSlide}
-                  className="w-[200px] h-[356px] bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
+                  className="bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
+                  style={{ width: MINI_CANVAS_WIDTH, height: MINI_CANVAS_HEIGHT }}
                 >
                   <div className="text-center text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]">
                     <PlusIcon />

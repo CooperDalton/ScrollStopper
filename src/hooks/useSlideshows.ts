@@ -50,6 +50,7 @@ export interface Slideshow {
   tik_tok_post_id?: string;
   frame_paths?: string[];
   created_at: string;
+  aspect_ratio: string;
   slides: Slide[];
 }
 
@@ -82,6 +83,7 @@ export function useSlideshows() {
           upload_status,
           tik_tok_post_id,
           frame_paths,
+          aspect_ratio,
           created_at,
           slides (
             id,
@@ -152,7 +154,11 @@ export function useSlideshows() {
     }
   }
 
-  const createSlideshow = async (caption?: string, productId?: string) => {
+  const createSlideshow = async (
+    caption?: string,
+    productId?: string,
+    aspectRatio: string = '9:16'
+  ) => {
     if (!user) {
       throw new Error('User must be authenticated to create slideshows')
     }
@@ -168,7 +174,8 @@ export function useSlideshows() {
           product_id: productId || null,
           caption: caption || 'Untitled Slideshow',
           status: 'draft',
-          upload_status: 'pending'
+          upload_status: 'pending',
+          aspect_ratio: aspectRatio
         })
         .select()
         .single()
