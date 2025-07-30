@@ -55,12 +55,12 @@ export default function CollectionThumbnail({ collection, className = "w-full h-
     );
   }
   
-  // Multiple images - show 2x2 grid (handle 2, 3, or 4+ images)
+  // Multiple images - show horizontal line of 4 images
   const imagesToShow = sampleImages.slice(0, 4);
   return (
-    <div className={`${className} grid grid-cols-2 grid-rows-2 gap-1 rounded-lg overflow-hidden`}>
+    <div className={`${className} flex gap-1 rounded-lg overflow-hidden`}>
       {imagesToShow.map((image: Image, index: number) => (
-        <div key={image.id} className="w-full h-full overflow-hidden bg-[var(--color-bg-tertiary)]">
+        <div key={image.id} className="flex-1 overflow-hidden bg-[var(--color-bg-tertiary)]">
           <img
             src={getImageUrl(image.file_path)}
             alt={`${collection.name} ${index + 1}`}
@@ -75,7 +75,7 @@ export default function CollectionThumbnail({ collection, className = "w-full h-
       ))}
       {/* Fill remaining slots if less than 4 images with subtle background */}
       {Array.from({ length: 4 - imagesToShow.length }).map((_, index) => (
-        <div key={`empty-${index}`} className="w-full h-full bg-[var(--color-bg-tertiary)] opacity-50"></div>
+        <div key={`empty-${index}`} className="flex-1 bg-[var(--color-bg-tertiary)] opacity-50"></div>
       ))}
     </div>
   );

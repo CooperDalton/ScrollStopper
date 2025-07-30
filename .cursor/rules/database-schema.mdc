@@ -62,7 +62,7 @@ CREATE TABLE public.slides (
   background_image_id uuid,
   duration_seconds integer,
   created_at timestamp without time zone DEFAULT now(),
-  index smallint,
+  index smallint NOT NULL,
   CONSTRAINT slides_pkey PRIMARY KEY (id),
   CONSTRAINT slides_background_image_id_fkey FOREIGN KEY (background_image_id) REFERENCES public.images(id),
   CONSTRAINT slides_slideshow_id_fkey FOREIGN KEY (slideshow_id) REFERENCES public.slideshows(id)
@@ -77,6 +77,7 @@ CREATE TABLE public.slideshows (
   tik_tok_post_id text,
   frame_paths ARRAY,
   created_at timestamp without time zone DEFAULT now(),
+  aspect_ratio text DEFAULT '9:16'::text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
   CONSTRAINT slideshows_pkey PRIMARY KEY (id),
   CONSTRAINT slideshows_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT slideshows_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)

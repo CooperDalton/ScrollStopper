@@ -127,7 +127,7 @@ export default function ImagesPage() {
                         <div className="flex items-center gap-2">
                           <ImageIcon />
                           <span className="text-sm">
-                            {collection.sample_images?.length || 0} image{(collection.sample_images?.length || 0) !== 1 ? 's' : ''}
+                            {collection.image_count || 0} image{(collection.image_count || 0) !== 1 ? 's' : ''}
                           </span>
                         </div>
                         <span className="text-xs">Click to manage</span>

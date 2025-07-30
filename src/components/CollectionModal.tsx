@@ -20,6 +20,14 @@ export default function CollectionModal({ isOpen, onClose, onSubmit }: Collectio
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleClose = () => {
+    if (!isSubmitting) {
+      setName('');
+      setError(null);
+      onClose();
+    }
+  };
+
   // Enable escape key to close modal
   useEscapeKey(handleClose, isOpen);
 
@@ -41,14 +49,6 @@ export default function CollectionModal({ isOpen, onClose, onSubmit }: Collectio
       setError(err instanceof Error ? err.message : 'Failed to create collection');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleClose = () => {
-    if (!isSubmitting) {
-      setName('');
-      setError(null);
-      onClose();
     }
   };
 

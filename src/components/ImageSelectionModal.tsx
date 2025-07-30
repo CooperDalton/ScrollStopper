@@ -127,9 +127,6 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
                       <h3 className="font-semibold text-[var(--color-text)] text-sm">
                         {collection.name}
                       </h3>
-                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                        {collection.sample_images?.length || 0} image{(collection.sample_images?.length || 0) !== 1 ? 's' : ''}
-                      </p>
                     </div>
                   </button>
                 ))}

@@ -6,6 +6,7 @@ export interface ImageCollection {
   name: string
   created_at: string
   sample_images?: Image[] // Add sample images for thumbnails
+  image_count?: number // Total number of images in the collection
 }
 
 export interface Image {
@@ -64,9 +65,10 @@ export async function getUserCollections() {
 
     if (error) throw error
 
-    // For each collection, fetch up to 4 sample images for thumbnails
+    // For each collection, fetch up to 4 sample images for thumbnails and total count
     const collectionsWithImages = await Promise.all(
       (collections || []).map(async (collection) => {
+        // Fetch sample images for thumbnails
         const { data: sampleImages } = await supabase
           .from('images')
           .select('*')
@@ -74,9 +76,16 @@ export async function getUserCollections() {
           .order('created_at', { ascending: false })
           .limit(4)
 
+        // Fetch total count of images
+        const { count: imageCount } = await supabase
+          .from('images')
+          .select('*', { count: 'exact', head: true })
+          .eq('collection_id', collection.id)
+
         return {
           ...collection,
-          sample_images: sampleImages || []
+          sample_images: sampleImages || [],
+          image_count: imageCount || 0
         }
       })
     )
