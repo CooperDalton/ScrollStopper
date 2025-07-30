@@ -126,7 +126,7 @@ export default function SlideshowEditor() {
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
-    strokeWidth: Math.max(1, Math.round(fontSize * 0.05)), // 4% of font size, minimum 1px
+    strokeWidth: Math.max(1, Math.round(fontSize * 0.04)), // 4% of font size, minimum 1px
     charSpacing: -50, // Decreased letter spacing
     lineHeight: 1.0, // Reduced line spacing
   });
@@ -584,39 +584,50 @@ export default function SlideshowEditor() {
       canvasRefs.current[slideId] = canvas;
       canvasElementRefs.current[slideId] = canvasElement;
       
-      // Add canvas selection event listeners
+      // Add canvas selection event listeners with improved logic
+      const handleSelectionChange = () => {
+        // Always check the actual canvas state rather than relying solely on events
+        const activeObject = canvas.getActiveObject();
+        
+        if (activeObject && activeObject.get('textId')) {
+          // Text object is selected, show resize controls
+          updateSelectedTextObject({
+            fabricObject: activeObject as fabric.IText,
+            textId: activeObject.get('textId'),
+            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+          });
+        } else {
+          // No text object selected, clear text selection
+          updateSelectedTextObject(null);
+        }
+      };
+
+      // More robust selection handling - using a longer delay to handle race conditions
       canvas.on('selection:cleared', () => {
-        updateSelectedTextObject(null);
+        // Use a longer timeout to handle potential race conditions
+        setTimeout(() => {
+          const activeObject = canvas.getActiveObject();
+          if (!activeObject || !activeObject.get('textId')) {
+            updateSelectedTextObject(null);
+          }
+        }, 50);
       });
       
-      canvas.on('selection:created', (e: any) => {
-        const activeObject = e.selected?.[0];
-        if (activeObject && activeObject.get('textId')) {
-          // Text object selected, show resize controls
-          updateSelectedTextObject({
-            fabricObject: activeObject,
-            textId: activeObject.get('textId'),
-            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
-          });
-        } else {
-          // Non-text object selected, clear text selection
-          updateSelectedTextObject(null);
-        }
-      });
+      canvas.on('selection:created', handleSelectionChange);
+      canvas.on('selection:updated', handleSelectionChange);
       
-      canvas.on('selection:updated', (e: any) => {
-        const activeObject = e.selected?.[0];
-        if (activeObject && activeObject.get('textId')) {
-          // Text object selected, show resize controls
-          updateSelectedTextObject({
-            fabricObject: activeObject,
-            textId: activeObject.get('textId'),
-            position: { x: activeObject.left || 0, y: activeObject.top || 0 }
-          });
-        } else {
-          // Non-text object selected, clear text selection
-          updateSelectedTextObject(null);
-        }
+      // Add mouse events for more robust tracking
+      canvas.on('mouse:up', () => {
+        setTimeout(() => {
+          const activeObject = canvas.getActiveObject();
+          if (activeObject && activeObject.get('textId')) {
+            updateSelectedTextObject({
+              fabricObject: activeObject as fabric.IText,
+              textId: activeObject.get('textId'),
+              position: { x: activeObject.left || 0, y: activeObject.top || 0 }
+            });
+          }
+        }, 25);
       });
       
       // Update button positions regularly for selected text
@@ -895,10 +906,13 @@ export default function SlideshowEditor() {
       disposeMiniCanvas(slideId);
     }
 
-    setSelectedSlideId(slideId);
+    // Only clear text selection when actually switching to a different slide
+    if (selectedSlideId !== slideId) {
+      // Clear text selection when changing slides
+      updateSelectedTextObject(null);
+    }
     
-    // Clear text selection when changing slides
-    updateSelectedTextObject(null);
+    setSelectedSlideId(slideId);
     
     // Manually center the slide within the fixed container
     centerSlide(slideId, 50);
@@ -1610,6 +1624,37 @@ export default function SlideshowEditor() {
                     </div>
                   )}
                   
+                  {/* Text Resize Controls - Positioned outside the button to avoid nesting */}
+                  {selectedTextObject && selectedSlideId === slide.id && (
+                    <div 
+                      className="absolute flex items-center gap-2 z-50 pointer-events-none"
+                      style={{
+                        left: `${(selectedTextObject.position.x / 300) * 100}%`,
+                        top: `${((selectedTextObject.position.y + 30) / 533) * 100}%`,
+                        transform: 'translateX(-50%)'
+                      }}
+                    >
+                      <button
+                        className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          adjustFontSize(-2);
+                        }}
+                      >
+                        −
+                      </button>
+                      <button
+                        className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          adjustFontSize(2);
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                  
                   <button
                     onClick={async () => await handleSlideSelect(slide.id)}
                     className={`transition-all duration-300 ${
@@ -1647,31 +1692,6 @@ export default function SlideshowEditor() {
                             height="533"
                             className="w-full h-full"
                           />
-                          
-                          {/* Text Resize Controls */}
-                          {selectedTextObject && selectedSlideId === slide.id && (
-                            <div 
-                              className="absolute flex items-center gap-2 z-50"
-                              style={{
-                                left: `${(selectedTextObject.position.x / 300) * 100}%`,
-                                top: `${((selectedTextObject.position.y + 30) / 533) * 100}%`,
-                                transform: 'translateX(-50%)'
-                              }}
-                            >
-                              <button
-                                className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors font-bold text-lg shadow-lg"
-                                onClick={() => adjustFontSize(-2)}
-                              >
-                                −
-                              </button>
-                              <button
-                                className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors font-bold text-lg shadow-lg"
-                                onClick={() => adjustFontSize(2)}
-                              >
-                                +
-                              </button>
-                            </div>
-                          )}
                         </div>
                       ) : (
                         <canvas
