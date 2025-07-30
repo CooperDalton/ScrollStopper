@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useCollections } from '@/hooks/useCollections';
 import { useImages } from '@/hooks/useImages';
 import { getImageUrl } from '@/lib/images';
+import CollectionThumbnail from './CollectionThumbnail';
 
 interface ImageSelectionModalProps {
   isOpen: boolean;
@@ -29,6 +30,8 @@ const ArrowLeftIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
   </svg>
 );
+
+
 
 export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, title = 'Select Background Image' }: ImageSelectionModalProps) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -113,15 +116,15 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
                     onClick={() => setSelectedCollectionId(collection.id)}
                     className="p-4 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl hover:border-[var(--color-primary)] hover:shadow-lg transition-all duration-200 text-left"
                   >
-                    <div className="flex flex-col items-center text-center">
-                      <div className="p-3 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-[var(--color-primary)] mb-3">
-                        <FolderIcon />
+                    <div className="flex flex-col text-center">
+                      <div className="mb-3">
+                        <CollectionThumbnail collection={collection} />
                       </div>
                       <h3 className="font-semibold text-[var(--color-text)] text-sm">
                         {collection.name}
                       </h3>
                       <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                        {new Date(collection.created_at).toLocaleDateString()}
+                        {collection.sample_images?.length || 0} image{(collection.sample_images?.length || 0) !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </button>
@@ -209,13 +212,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
         )}
 
         {/* Footer */}
-        <div className="flex justify-end mt-6 pt-4 border-t border-[var(--color-border)]">
-          <button
-            onClick={handleClose}
-            className="px-6 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="flex justify-end mt-6 pt-4">
         </div>
       </div>
     </div>

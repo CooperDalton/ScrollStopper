@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import CollectionModal from '../../components/CollectionModal';
 import ImageUploadModal from '../../components/ImageUploadModal';
+import CollectionThumbnail from '../../components/CollectionThumbnail';
 import { useCollections } from '@/hooks/useCollections';
 import { useImages } from '@/hooks/useImages';
 import { ImageCollection } from '@/lib/images';
@@ -107,23 +108,29 @@ export default function ImagesPage() {
                       onClick={() => handleCollectionClick(collection)}
                       className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-6 cursor-pointer hover:border-[var(--color-primary)] hover:shadow-lg transition-all duration-200"
                     >
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-[var(--color-primary)]">
-                          <FolderIcon />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-[var(--color-text)] text-lg">
-                            {collection.name}
-                          </h3>
-                          <p className="text-sm text-[var(--color-text-muted)]">
-                            Created {new Date(collection.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
+                      {/* Collection Thumbnail */}
+                      <div className="mb-4">
+                        <CollectionThumbnail collection={collection} className="w-full h-32" />
                       </div>
                       
-                      <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-                        <ImageIcon />
-                        <span className="text-sm">Click to manage images</span>
+                      {/* Collection Info */}
+                      <div className="mb-4">
+                        <h3 className="font-semibold text-[var(--color-text)] text-lg mb-1">
+                          {collection.name}
+                        </h3>
+                        <p className="text-sm text-[var(--color-text-muted)]">
+                          Created {new Date(collection.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-[var(--color-text-muted)]">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon />
+                          <span className="text-sm">
+                            {collection.sample_images?.length || 0} image{(collection.sample_images?.length || 0) !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <span className="text-xs">Click to manage</span>
                       </div>
                     </div>
                   ))}

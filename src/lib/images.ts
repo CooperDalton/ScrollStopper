@@ -5,6 +5,7 @@ export interface ImageCollection {
   user_id: string
   name: string
   created_at: string
+  sample_images?: Image[] // Add sample images for thumbnails
 }
 
 export interface Image {
@@ -62,7 +63,25 @@ export async function getUserCollections() {
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return { collections: collections || [], error: null }
+
+    // For each collection, fetch up to 4 sample images for thumbnails
+    const collectionsWithImages = await Promise.all(
+      (collections || []).map(async (collection) => {
+        const { data: sampleImages } = await supabase
+          .from('images')
+          .select('*')
+          .eq('collection_id', collection.id)
+          .order('created_at', { ascending: false })
+          .limit(4)
+
+        return {
+          ...collection,
+          sample_images: sampleImages || []
+        }
+      })
+    )
+
+    return { collections: collectionsWithImages, error: null }
   } catch (error) {
     console.error('Error fetching collections:', error)
     return { collections: [], error: error as Error }
