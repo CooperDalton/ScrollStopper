@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct } from '@/lib/products';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -51,22 +52,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
     }
   }, [isOpen, product]);
 
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen && !isLoading) {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscapeKey);
+  // Enable escape key to close modal
+  useEscapeKey(() => {
+    if (!isLoading) {
+      onClose();
     }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscapeKey);
-    };
-  }, [isOpen, isLoading, onClose]);
+  }, isOpen);
 
   const validateForm = () => {
     const newErrors = { name: '', description: '' };

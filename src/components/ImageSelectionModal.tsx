@@ -5,6 +5,7 @@ import { useCollections } from '@/hooks/useCollections';
 import { useImages } from '@/hooks/useImages';
 import { getImageUrl } from '@/lib/images';
 import CollectionThumbnail from './CollectionThumbnail';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 interface ImageSelectionModalProps {
   isOpen: boolean;
@@ -42,16 +43,19 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
   
   const selectedCollection = collections.find(c => c.id === selectedCollectionId);
 
-  const handleImageSelect = (imageId: string, filePath: string) => {
-    const imageUrl = getImageUrl(filePath);
-    onImageSelect(imageUrl, imageId);
-    handleClose();
-  };
-
   const handleClose = () => {
     setSelectedCollectionId(null);
     setImageLoadErrors(new Set());
     onClose();
+  };
+
+  // Enable escape key to close modal
+  useEscapeKey(handleClose, isOpen);
+
+  const handleImageSelect = (imageId: string, filePath: string) => {
+    const imageUrl = getImageUrl(filePath);
+    onImageSelect(imageUrl, imageId);
+    handleClose();
   };
 
   const handleBackToCollections = () => {

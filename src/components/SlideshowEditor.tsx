@@ -73,8 +73,29 @@ export default function SlideshowEditor() {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
   // Preset sizing options for text
-  const fontSizes = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 44, 48];
-  const strokeWidths = fontSizes.map(size => Math.max(1, Math.round(size * 0.05)));
+  const fontSizes = [20, 24, 32, 40, 48, 56, 64];
+  const strokeWidths = [1, 1, 1, 1, 1, 1, 1, 1];
+  
+  // Helper function to get stroke width from the strokeWidths array based on font size
+  const getStrokeWidthForFontSize = (fontSize: number) => {
+    const index = fontSizes.indexOf(fontSize);
+    return index !== -1 ? strokeWidths[index] : strokeWidths[0]; // Default to first stroke width if not found
+  };
+  
+  // Reusable function to get text styling properties
+  const getTextStyling = (fontSize: number = 24) => ({
+    fontFamily: '"proxima-nova", sans-serif',
+    fontWeight: '600',
+    fontStyle: 'normal',
+    fill: '#ffffff',
+    textAlign: 'center' as const,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    stroke: 'black',
+    strokeWidth: getStrokeWidthForFontSize(fontSize), // Use strokeWidths array
+    charSpacing: -50, // Decreased letter spacing
+    lineHeight: 1.0, // Reduced line spacing
+  });
 
   // Track selected text object for resize controls
   const [selectedTextObject, setSelectedTextObject] = useState<{
@@ -154,21 +175,6 @@ export default function SlideshowEditor() {
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
   const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
-
-  // Reusable function to get text styling properties
-  const getTextStyling = (fontSize: number = 24) => ({
-    fontFamily: '"proxima-nova", sans-serif',
-    fontWeight: '600',
-    fontStyle: 'normal',
-    fill: '#ffffff',
-    textAlign: 'center' as const,
-    originX: 'center' as const,
-    originY: 'center' as const,
-    stroke: 'black',
-    strokeWidth: Math.max(1, Math.round(fontSize * 0.04)), // 4% of font size, minimum 1px
-    charSpacing: -50, // Decreased letter spacing
-    lineHeight: 1.0, // Reduced line spacing
-  });
 
   // Helper function to snap rotation angles to 90-degree increments
   const snapAngle = (angle: number, threshold: number = 8) => {
@@ -1224,8 +1230,8 @@ export default function SlideshowEditor() {
         fabricText.set('angle', snappedAngle);
       }
       
-      // Update stroke width based on new font size
-      const newStrokeWidth = Math.max(1, Math.round(effectiveFontSize * 0.05));
+      // Update stroke width based on new font size using strokeWidths array
+      const newStrokeWidth = getStrokeWidthForFontSize(effectiveFontSize);
       console.log('Updating stroke width:', newStrokeWidth, 'for font size:', effectiveFontSize);
       fabricText.set('strokeWidth', newStrokeWidth);
       

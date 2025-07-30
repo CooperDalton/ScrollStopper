@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 interface CollectionModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function CollectionModal({ isOpen, onClose, onSubmit }: Collectio
   const [name, setName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Enable escape key to close modal
+  useEscapeKey(handleClose, isOpen);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

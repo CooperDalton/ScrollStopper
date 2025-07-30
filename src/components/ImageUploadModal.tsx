@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { ImageCollection } from '@/lib/images';
 import { getImageUrl } from '@/lib/images';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 interface ImageUploadModalProps {
   isOpen: boolean;
@@ -153,6 +154,9 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
       onClose();
     }
   };
+
+  // Enable escape key to close modal
+  useEscapeKey(handleClose, isOpen);
 
   const handleFileInputClick = () => {
     fileInputRef.current?.click();
