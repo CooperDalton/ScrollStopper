@@ -522,7 +522,7 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -769,7 +769,7 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -896,7 +896,7 @@ export default function SlideshowEditor() {
 
     slide.overlays.forEach((overlayData: SlideOverlay) => {
       if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             left: overlayData.position_x,
             top: overlayData.position_y,
@@ -969,7 +969,7 @@ export default function SlideshowEditor() {
 
     slide.overlays.forEach((overlayData: SlideOverlay) => {
       if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             left: overlayData.position_x,
             top: overlayData.position_y,
@@ -1417,7 +1417,7 @@ export default function SlideshowEditor() {
         });
 
         // Add new background image
-        fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -1457,7 +1457,7 @@ export default function SlideshowEditor() {
     // Add to canvas first to get image dimensions
     const canvas = canvasRefs.current[selectedSlideId];
     if (canvas) {
-      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+      fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
         // Calculate smart sizing based on image dimensions
         const canvasWidth = CANVAS_WIDTH;
         const canvasHeight = CANVAS_HEIGHT;
