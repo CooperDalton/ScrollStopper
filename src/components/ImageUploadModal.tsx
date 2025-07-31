@@ -340,17 +340,6 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
             )}
           </div>
         )}
-
-        {/* Footer */}
-        <div className="flex justify-end mt-6 pt-4 border-t border-[var(--color-border)]">
-          <button
-            onClick={handleClose}
-            disabled={uploading}
-            className="px-6 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50"
-          >
-            Close
-          </button>
-        </div>
       </div>
     </div>
   );
