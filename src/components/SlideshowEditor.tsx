@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import * as fabric from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
@@ -59,6 +60,10 @@ const ImageIcon = () => (
 
 export default function SlideshowEditor() {
   const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, refetch } = useSlideshows();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -72,7 +77,28 @@ export default function SlideshowEditor() {
   const [isDeletingSlide, setIsDeletingSlide] = useState(false);
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
-  const [sidebarMode, setSidebarMode] = useState<'create' | 'drafts'>('create');
+  const [sidebarMode, setSidebarMode] = useState<'create' | 'drafts'>(() => {
+    const mode = searchParams.get('mode');
+    return mode === 'drafts' ? 'drafts' : 'create';
+  });
+
+  const updateModeInUrl = (mode: 'create' | 'drafts') => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('mode', mode);
+    router.replace(`${pathname}?${params.toString()}`);
+  };
+
+  const handleSidebarMode = (mode: 'create' | 'drafts') => {
+    setSidebarMode(mode);
+    updateModeInUrl(mode);
+  };
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    if (mode === 'drafts' || mode === 'create') {
+      setSidebarMode(mode);
+    }
+  }, [searchParams]);
 
   const parseAspectRatio = (ratio: string) => {
     const [w, h] = ratio.split(':').map(Number);
@@ -276,31 +302,39 @@ export default function SlideshowEditor() {
 
   const draftGroups = React.useMemo(() => {
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const dayOfWeek = now.getDay();
+    const diffToMonday = (dayOfWeek + 6) % 7; // days since Monday
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfToday.getDate() - diffToMonday);
+
+    const startOfLastWeek = new Date(startOfWeek);
+    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const groups: { label: string; slides: Slideshow[] }[] = [
       { label: 'Today', slides: [] },
       { label: 'This Week', slides: [] },
+      { label: 'Last Week', slides: [] },
       { label: 'This Month', slides: [] },
-      { label: 'Earlier', slides: [] }
+      { label: 'Older', slides: [] }
     ];
 
     draftSlideshows.forEach(slideshow => {
-      const created = new Date(slideshow.created_at);
-      if (
-        created.getFullYear() === now.getFullYear() &&
-        created.getMonth() === now.getMonth() &&
-        created.getDate() === now.getDate()
-      ) {
+      const edited = new Date(slideshow.date_modified || slideshow.created_at);
+
+      if (edited >= startOfToday) {
         groups[0].slides.push(slideshow);
-      } else if (created >= startOfWeek) {
+      } else if (edited >= startOfWeek) {
         groups[1].slides.push(slideshow);
-      } else if (created >= startOfMonth) {
+      } else if (edited >= startOfLastWeek) {
         groups[2].slides.push(slideshow);
-      } else {
+      } else if (edited >= startOfMonth) {
         groups[3].slides.push(slideshow);
+      } else {
+        groups[4].slides.push(slideshow);
       }
     });
 
@@ -1618,7 +1652,7 @@ export default function SlideshowEditor() {
         {/* Mode Toggle */}
         <div className="p-4 border-b border-[var(--color-border)] flex gap-2">
           <button
-            onClick={() => setSidebarMode('create')}
+            onClick={() => handleSidebarMode('create')}
             className={`flex-1 p-2 rounded-lg text-sm font-medium transition-colors ${
               sidebarMode === 'create'
                 ? 'bg-[var(--color-primary)] text-white'
@@ -1628,7 +1662,7 @@ export default function SlideshowEditor() {
             Create
           </button>
           <button
-            onClick={() => setSidebarMode('drafts')}
+            onClick={() => handleSidebarMode('drafts')}
             className={`flex-1 p-2 rounded-lg text-sm font-medium transition-colors ${
               sidebarMode === 'drafts'
                 ? 'bg-[var(--color-primary)] text-white'
