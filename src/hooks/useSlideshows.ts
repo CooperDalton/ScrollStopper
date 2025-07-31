@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
+import type * as fabric from 'fabric'
 
 export interface SlideText {
   id: string;
@@ -677,6 +678,80 @@ export function useSlideshows() {
     }
   }
 
+  const renderSlideshow = async (
+    slideshowId: string,
+    getSlideCanvas: (slideId: string) => fabric.Canvas | undefined,
+    onProgress?: (completed: number, total: number) => void
+  ) => {
+    if (!user) {
+      throw new Error('User must be authenticated to render slideshows')
+    }
+
+    const slideshow = slideshows.find(s => s.id === slideshowId)
+    if (!slideshow) throw new Error('Slideshow not found')
+
+    const total = slideshow.slides.length
+
+    // Update status locally immediately
+    setSlideshows(prev =>
+      prev.map(s => (s.id === slideshowId ? { ...s, status: 'rendering' } : s))
+    )
+
+    try {
+      // Ensure bucket exists
+      const bucket = `${user.id}-rendered-slides`
+      await supabase.storage.createBucket(bucket).catch(() => {})
+
+      const framePaths: string[] = []
+
+      for (let i = 0; i < slideshow.slides.length; i++) {
+        const slide = slideshow.slides[i]
+        const canvas = getSlideCanvas(slide.id)
+        if (!canvas) continue
+
+        const multiplier = 1080 / 300
+        const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
+        const file = await (await fetch(dataUrl)).blob()
+        const path = `${slideshowId}/${slide.id}.jpg`
+        await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+
+        // Update slide file_paths column
+        const { data: slideData } = await supabase
+          .from('slides')
+          .select('file_paths')
+          .eq('id', slide.id)
+          .single()
+
+        const currentPaths: string[] = slideData?.file_paths || []
+        await supabase
+          .from('slides')
+          .update({ file_paths: [...currentPaths, path] })
+          .eq('id', slide.id)
+
+        framePaths.push(path)
+        onProgress?.(i + 1, total)
+      }
+
+      await supabase
+        .from('slideshows')
+        .update({ status: 'completed', frame_paths: framePaths })
+        .eq('id', slideshowId)
+
+      setSlideshows(prev =>
+        prev.map(s =>
+          s.id === slideshowId ? { ...s, status: 'completed', frame_paths: framePaths } : s
+        )
+      )
+    } catch (err) {
+      console.error('Error rendering slideshow:', err)
+      // Rollback status
+      setSlideshows(prev =>
+        prev.map(s => (s.id === slideshowId ? { ...s, status: 'draft' } : s))
+      )
+      throw err
+    }
+  }
+
   return {
     slideshows,
     loading,
@@ -688,6 +763,7 @@ export function useSlideshows() {
     saveSlideOverlays,
     updateSlideBackground,
     updateSlideDuration,
+    renderSlideshow,
     refetch: fetchSlideshows
   }
-} 
+}

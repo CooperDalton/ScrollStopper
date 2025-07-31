@@ -3,7 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as fabric from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
+import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
+import { supabase } from '@/lib/supabase';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 
 // Icons
@@ -58,7 +60,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, refetch } = useSlideshows();
+  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, refetch } = useSlideshows();
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -73,6 +75,9 @@ export default function SlideshowEditor() {
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const [sidebarMode, setSidebarMode] = useState<'create' | 'drafts'>('create');
+  const [renderProgress, setRenderProgress] = useState<{[key:string]: number}>({});
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const parseAspectRatio = (ratio: string) => {
     const [w, h] = ratio.split(':').map(Number);
@@ -306,6 +311,10 @@ export default function SlideshowEditor() {
 
     return groups.filter(g => g.slides.length > 0);
   }, [draftSlideshows]);
+
+  const completedSlideshows = React.useMemo(() => {
+    return displaySlideshows.filter(s => s.status === 'completed');
+  }, [displaySlideshows]);
 
   const aspectRatio = parseAspectRatio(currentSlideshow?.aspect_ratio || '9:16');
   const CANVAS_WIDTH = 300;
@@ -1606,6 +1615,21 @@ export default function SlideshowEditor() {
     }
   };
 
+  const handleRender = async () => {
+    if (!currentSlideshow) return;
+    setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+    try {
+      await renderSlideshow(
+        currentSlideshow.id,
+        (id) => canvasRefs.current[id],
+        (completed, total) =>
+          setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+      );
+    } catch (err) {
+      console.error('Failed to render slideshow:', err);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       {/* Left Sidebar - Slideshows */}
@@ -1661,6 +1685,50 @@ export default function SlideshowEditor() {
                 <option value="4:5">4:5</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {sidebarMode === 'create' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-3">My Videos</h3>
+            {completedSlideshows.length === 0 && Object.keys(renderProgress).length === 0 ? (
+              <div className="text-center text-[var(--color-text-muted)]">No videos yet.</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {completedSlideshows.map(slideshow => {
+                  const bucket = `${slideshow.user_id}-rendered-slides`;
+                  const first = slideshow.frame_paths?.[0]
+                    ? supabase.storage.from(bucket).getPublicUrl(slideshow.frame_paths[0]).data.publicUrl
+                    : null;
+                  return (
+                    <button
+                      key={slideshow.id}
+                      onClick={() => {
+                        const urls = (slideshow.frame_paths || []).map(p =>
+                          supabase.storage.from(bucket).getPublicUrl(p).data.publicUrl
+                        );
+                        setPreviewImages(urls);
+                        setIsPreviewOpen(true);
+                      }}
+                    >
+                      {first ? (
+                        <img src={first} className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]" />
+                      ) : (
+                        <div className="w-full h-24 bg-gray-200 rounded-xl" />
+                      )}
+                    </button>
+                  );
+                })}
+                {Object.entries(renderProgress).map(([id, count]) => {
+                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
+                  return (
+                    <div key={id} className="w-full h-24 bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
+                      {count}/{total}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1905,12 +1973,19 @@ export default function SlideshowEditor() {
               >
                 <ImageIcon />
               </button>
-              <button 
+              <button
                 onClick={handleDurationClick}
                 className="px-4 py-2 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Slide Duration"
               >
                 {currentSlide?.duration_seconds || 3}s
+              </button>
+              <button
+                onClick={handleRender}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                title="Create"
+              >
+                Create
               </button>
             </div>
           </div>
@@ -1932,6 +2007,13 @@ export default function SlideshowEditor() {
         onImageSelect={handleImageOverlaySelect}
         title="Select Image"
       />
+
+      <SlideshowPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        imageUrls={previewImages}
+        title="Video Preview"
+      />
     </div>
   );
-} 
+}
