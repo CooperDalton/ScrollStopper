@@ -700,6 +700,9 @@ export function useSlideshows() {
     try {
       const bucket = 'rendered-slides'
 
+      // Ensure the bucket exists (ignore errors if it already exists)
+      await supabase.storage.createBucket(bucket).catch(() => undefined)
+
       const framePaths: string[] = []
 
       for (let i = 0; i < slideshow.slides.length; i++) {
@@ -711,20 +714,29 @@ export function useSlideshows() {
         const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
         const file = await (await fetch(dataUrl)).blob()
         const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
-        await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+        await supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: 'image/jpeg'
+        })
 
-        // Update slide file_paths column
-        const { data: slideData } = await supabase
-          .from('slides')
-          .select('file_paths')
-          .eq('id', slide.id)
-          .single()
+        // Update slide file_paths column if present
+        try {
+          const { data: slideData } = await supabase
+            .from('slides')
+            .select('file_paths')
+            .eq('id', slide.id)
+            .single()
 
-        const currentPaths: string[] = slideData?.file_paths || []
-        await supabase
-          .from('slides')
-          .update({ file_paths: [...currentPaths, path] })
-          .eq('id', slide.id)
+          const currentPaths: string[] = Array.isArray(slideData?.file_paths)
+            ? slideData?.file_paths
+            : []
+          await supabase
+            .from('slides')
+            .update({ file_paths: [...currentPaths, path] })
+            .eq('id', slide.id)
+        } catch {
+          // Ignore if column doesn't exist or update fails
+        }
 
         framePaths.push(path)
         onProgress?.(i + 1, total)
