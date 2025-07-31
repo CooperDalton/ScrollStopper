@@ -50,6 +50,7 @@ export interface Slideshow {
   tik_tok_post_id?: string;
   frame_paths?: string[];
   created_at: string;
+  date_modified: string;
   aspect_ratio: string;
   slides: Slide[];
 }
@@ -83,6 +84,7 @@ export function useSlideshows() {
           upload_status,
           tik_tok_post_id,
           frame_paths,
+          date_modified,
           aspect_ratio,
           created_at,
           slides (
@@ -125,7 +127,7 @@ export function useSlideshows() {
           )
         `)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('date_modified', { ascending: false })
 
       if (slideshowsError) throw slideshowsError
 
@@ -175,7 +177,8 @@ export function useSlideshows() {
           caption: caption || 'Untitled Slideshow',
           status: 'draft',
           upload_status: 'pending',
-          aspect_ratio: aspectRatio
+          aspect_ratio: aspectRatio,
+          date_modified: new Date().toISOString()
         })
         .select()
         .single()
@@ -198,11 +201,14 @@ export function useSlideshows() {
       // Create the new slideshow object
       const newSlideshow: Slideshow = {
         ...slideshowData,
-        slides: [{
-          ...slideData,
-          texts: [],
-          overlays: []
-        }]
+        date_modified: slideshowData.date_modified || new Date().toISOString(),
+        slides: [
+          {
+            ...slideData,
+            texts: [],
+            overlays: []
+          }
+        ]
       }
 
       // Add to local state
@@ -220,6 +226,15 @@ export function useSlideshows() {
   useEffect(() => {
     fetchSlideshows()
   }, [user])
+
+  const touchSlideshow = async (slideshowId: string) => {
+    const now = new Date().toISOString()
+    // Update local state immediately
+    setSlideshows(prev =>
+      prev.map(s => (s.id === slideshowId ? { ...s, date_modified: now } : s))
+    )
+    await supabase.from('slideshows').update({ date_modified: now }).eq('id', slideshowId)
+  }
 
   const addSlide = async (slideshowId: string) => {
     if (!user) {
@@ -265,6 +280,8 @@ export function useSlideshows() {
         }
         return slideshow
       }))
+
+      await touchSlideshow(slideshowId)
 
       return slideData
     } catch (err) {
@@ -339,6 +356,11 @@ export function useSlideshows() {
         })))
       }
 
+      const parent = slideshows.find(s => s.slides.some(slide => slide.id === slideId))
+      if (parent) {
+        await touchSlideshow(parent.id)
+      }
+
       return true
     } catch (err) {
       console.error('Error saving slide texts:', err)
@@ -391,6 +413,11 @@ export function useSlideshows() {
           return slide
         })
       })))
+
+      const parent = slideshows.find(s => s.slides.some(slide => slide.id === slideId))
+      if (parent) {
+        await touchSlideshow(parent.id)
+      }
 
       return true
     } catch (err) {
@@ -466,6 +493,10 @@ export function useSlideshows() {
             return slide
           })
         })))
+      }
+      const parent = slideshows.find(s => s.slides.some(slide => slide.id === slideId))
+      if (parent) {
+        await touchSlideshow(parent.id)
       }
 
       return true
@@ -565,7 +596,9 @@ export function useSlideshows() {
         }
       }
 
-      return { 
+      await touchSlideshow(slideshowWithSlide.id)
+
+      return {
         deletedSlide: slideToDelete,
         remainingSlides: slideshowWithSlide.slides.filter(slide => slide.id !== slideId)
       }
@@ -628,6 +661,11 @@ export function useSlideshows() {
           })
         })))
         throw updateError
+      }
+
+      const parent = slideshows.find(s => s.slides.some(slide => slide.id === slideId))
+      if (parent) {
+        await touchSlideshow(parent.id)
       }
 
       return true

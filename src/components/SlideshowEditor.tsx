@@ -267,7 +267,11 @@ export default function SlideshowEditor() {
   const draftSlideshows = React.useMemo(() => {
     return displaySlideshows
       .filter(s => s.status === 'draft')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      .sort(
+        (a, b) =>
+          new Date(b.date_modified || b.created_at).getTime() -
+          new Date(a.date_modified || a.created_at).getTime()
+      );
   }, [displaySlideshows]);
 
   const draftGroups = React.useMemo(() => {
@@ -1681,35 +1685,41 @@ export default function SlideshowEditor() {
                   <div key={label} className="space-y-3">
                     <hr className="border-[var(--color-border)]" />
                     <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
-                    {slides.map((slideshow: Slideshow) => (
-                      <button
-                        key={slideshow.id}
-                        onClick={async () => {
-                          // Auto-save current slide if it has unsaved changes before switching slideshows
-                          if (hasUnsavedChanges && selectedSlideId && currentSlide) {
-                            console.log('Auto-saving before switching slideshows...');
-                            await autoSaveSlide(selectedSlideId, currentSlide);
-                          }
+                    <div className="grid grid-cols-3 gap-2">
+                      {slides.map((slideshow: Slideshow) => (
+                        <button
+                          key={slideshow.id}
+                          onClick={async () => {
+                            // Auto-save current slide if it has unsaved changes before switching slideshows
+                            if (hasUnsavedChanges && selectedSlideId && currentSlide) {
+                              console.log('Auto-saving before switching slideshows...');
+                              await autoSaveSlide(selectedSlideId, currentSlide);
+                            }
 
-                          setSelectedSlideshowId(slideshow.id);
-                          setSelectedSlideId(slideshow.slides[0]?.id || '');
+                            setSelectedSlideshowId(slideshow.id);
+                            setSelectedSlideId(slideshow.slides[0]?.id || '');
 
-                          // Center the first slide of the selected slideshow after a delay
-                          if (slideshow.slides.length > 0) {
-                            centerSlide(slideshow.slides[0].id, 100);
-                          }
-                        }}
-                        className="w-full text-left"
-                      >
-                        {slideshow.slides[0]?.backgroundImage && (
-                          <img
-                            src={slideshow.slides[0].backgroundImage}
-                            alt="Draft thumbnail"
-                            className="w-full rounded-xl border border-[var(--color-border)]"
-                          />
-                        )}
-                      </button>
-                    ))}
+                            // Center the first slide of the selected slideshow after a delay
+                            if (slideshow.slides.length > 0) {
+                              centerSlide(slideshow.slides[0].id, 100);
+                            }
+                          }}
+                          className="text-left"
+                        >
+                          {slideshow.slides[0]?.backgroundImage ? (
+                            <img
+                              src={slideshow.slides[0].backgroundImage}
+                              alt="Draft thumbnail"
+                              className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]"
+                            />
+                          ) : (
+                            <div className="w-full h-24 flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
+                              No Image
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
