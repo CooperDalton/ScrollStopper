@@ -1615,20 +1615,26 @@ export default function SlideshowEditor() {
     }
   };
 
-  const handleRender = async () => {
-    if (!currentSlideshow) return;
-    setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
-    try {
-      await renderSlideshow(
-        currentSlideshow.id,
-        (id) => canvasRefs.current[id],
-        (completed, total) =>
-          setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
-      );
-    } catch (err) {
-      console.error('Failed to render slideshow:', err);
-    }
-  };
+    const handleRender = async () => {
+      if (!currentSlideshow) return;
+      setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+      try {
+        await renderSlideshow(
+          currentSlideshow.id,
+          (id) => canvasRefs.current[id],
+          (completed) =>
+            setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+        );
+      } catch (err) {
+        console.error('Failed to render slideshow:', err);
+      } finally {
+        setRenderProgress(prev => {
+          const updated = { ...prev };
+          delete updated[currentSlideshow.id];
+          return updated;
+        });
+      }
+    };
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
@@ -1696,7 +1702,7 @@ export default function SlideshowEditor() {
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {completedSlideshows.map(slideshow => {
-                  const bucket = `${slideshow.user_id}-rendered-slides`;
+                  const bucket = 'rendered-slides';
                   const first = slideshow.frame_paths?.[0]
                     ? supabase.storage.from(bucket).getPublicUrl(slideshow.frame_paths[0]).data.publicUrl
                     : null;

@@ -698,9 +698,7 @@ export function useSlideshows() {
     )
 
     try {
-      // Ensure bucket exists
-      const bucket = `${user.id}-rendered-slides`
-      await supabase.storage.createBucket(bucket).catch(() => {})
+      const bucket = 'rendered-slides'
 
       const framePaths: string[] = []
 
@@ -712,7 +710,7 @@ export function useSlideshows() {
         const multiplier = 1080 / 300
         const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
         const file = await (await fetch(dataUrl)).blob()
-        const path = `${slideshowId}/${slide.id}.jpg`
+        const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
         await supabase.storage.from(bucket).upload(path, file, { upsert: true })
 
         // Update slide file_paths column
