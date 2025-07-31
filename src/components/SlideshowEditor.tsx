@@ -72,6 +72,7 @@ export default function SlideshowEditor() {
   const [isDeletingSlide, setIsDeletingSlide] = useState(false);
   const [slideRenderKey, setSlideRenderKey] = useState(0);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const [sidebarMode, setSidebarMode] = useState<'create' | 'drafts'>('create');
 
   const parseAspectRatio = (ratio: string) => {
     const [w, h] = ratio.split(':').map(Number);
@@ -262,6 +263,45 @@ export default function SlideshowEditor() {
   const displaySlideshows = localSlideshows.length > 0 ? localSlideshows : slideshows;
   const currentSlideshow = displaySlideshows.find((s: Slideshow) => s.id === selectedSlideshowId);
   const currentSlide = currentSlideshow?.slides.find((s: Slide) => s.id === selectedSlideId);
+
+  const draftSlideshows = React.useMemo(() => {
+    return displaySlideshows
+      .filter(s => s.status === 'draft')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [displaySlideshows]);
+
+  const draftGroups = React.useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const groups: { label: string; slides: Slideshow[] }[] = [
+      { label: 'Today', slides: [] },
+      { label: 'This Week', slides: [] },
+      { label: 'This Month', slides: [] },
+      { label: 'Earlier', slides: [] }
+    ];
+
+    draftSlideshows.forEach(slideshow => {
+      const created = new Date(slideshow.created_at);
+      if (
+        created.getFullYear() === now.getFullYear() &&
+        created.getMonth() === now.getMonth() &&
+        created.getDate() === now.getDate()
+      ) {
+        groups[0].slides.push(slideshow);
+      } else if (created >= startOfWeek) {
+        groups[1].slides.push(slideshow);
+      } else if (created >= startOfMonth) {
+        groups[2].slides.push(slideshow);
+      } else {
+        groups[3].slides.push(slideshow);
+      }
+    });
+
+    return groups.filter(g => g.slides.length > 0);
+  }, [draftSlideshows]);
 
   const aspectRatio = parseAspectRatio(currentSlideshow?.aspect_ratio || '9:16');
   const CANVAS_WIDTH = 300;
@@ -1571,85 +1611,111 @@ export default function SlideshowEditor() {
           <h2 className="text-xl font-bold text-[var(--color-text)]">My Slideshows</h2>
         </div>
 
-        {/* Create Slideshow Button */}
-        <div className="p-4 border-b border-[var(--color-border)]">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCreateSlideshow}
-              disabled={isCreating}
-              className="flex-1 flex items-center justify-center gap-2 p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <PlusIcon />
-              {isCreating ? 'Creating...' : 'New Slideshow'}
-            </button>
-            <select
-              value={newAspectRatio}
-              onChange={(e) => setNewAspectRatio(e.target.value)}
-              className="p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)]"
-            >
-              <option value="9:16">9:16</option>
-              <option value="1:1">1:1</option>
-              <option value="4:5">4:5</option>
-            </select>
-          </div>
+        {/* Mode Toggle */}
+        <div className="p-4 border-b border-[var(--color-border)] flex gap-2">
+          <button
+            onClick={() => setSidebarMode('create')}
+            className={`flex-1 p-2 rounded-lg text-sm font-medium transition-colors ${
+              sidebarMode === 'create'
+                ? 'bg-[var(--color-primary)] text-white'
+                : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)]'
+            }`}
+          >
+            Create
+          </button>
+          <button
+            onClick={() => setSidebarMode('drafts')}
+            className={`flex-1 p-2 rounded-lg text-sm font-medium transition-colors ${
+              sidebarMode === 'drafts'
+                ? 'bg-[var(--color-primary)] text-white'
+                : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)]'
+            }`}
+          >
+            Drafts
+          </button>
         </div>
 
-        {/* Slideshows List */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="text-center text-[var(--color-text-muted)] py-8">
-              Loading slideshows...
-            </div>
-          ) : error ? (
-            <div className="text-center text-red-500 py-8">
-              Error: {error}
-            </div>
-          ) : displaySlideshows.length === 0 ? (
-            <div className="text-center text-[var(--color-text-muted)] py-8">
-              No slideshows yet. Create your first one!
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {displaySlideshows.map((slideshow: Slideshow) => (
+        {/* Create Slideshow Button */}
+        {sidebarMode === 'create' && (
+          <div className="p-4 border-b border-[var(--color-border)]">
+            <div className="flex items-center gap-2">
               <button
-                key={slideshow.id}
-                onClick={async () => {
-                  // Auto-save current slide if it has unsaved changes before switching slideshows
-                  if (hasUnsavedChanges && selectedSlideId && currentSlide) {
-                    console.log('Auto-saving before switching slideshows...');
-                    await autoSaveSlide(selectedSlideId, currentSlide);
-                  }
-                  
-                  setSelectedSlideshowId(slideshow.id);
-                  setSelectedSlideId(slideshow.slides[0]?.id || '');
-                  
-                  // Center the first slide of the selected slideshow after a delay
-                  if (slideshow.slides.length > 0) {
-                    centerSlide(slideshow.slides[0].id, 100);
-                  }
-                }}
-                className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                  selectedSlideshowId === slideshow.id
-                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)] bg-opacity-10'
-                    : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)]'
-                }`}
+                onClick={handleCreateSlideshow}
+                disabled={isCreating}
+                className="flex-1 flex items-center justify-center gap-2 p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-[var(--color-text)]">{slideshow.caption || 'Untitled'}</h3>
-                    <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                      {slideshow.slides.length} slide{slideshow.slides.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <div className="text-[var(--color-text-muted)]">
-                    <PlayIcon />
-                  </div>
-                </div>
+                <PlusIcon />
+                {isCreating ? 'Creating...' : 'New Slideshow'}
               </button>
-              ))}
+              <select
+                value={newAspectRatio}
+                onChange={(e) => setNewAspectRatio(e.target.value)}
+                className="p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)]"
+              >
+                <option value="9:16">9:16</option>
+                <option value="1:1">1:1</option>
+                <option value="4:5">4:5</option>
+              </select>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Slideshows List */}
+        {sidebarMode === 'drafts' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            {loading ? (
+              <div className="text-center text-[var(--color-text-muted)] py-8">
+                Loading slideshows...
+              </div>
+            ) : error ? (
+              <div className="text-center text-red-500 py-8">
+                Error: {error}
+              </div>
+            ) : draftSlideshows.length === 0 ? (
+              <div className="text-center text-[var(--color-text-muted)] py-8">
+                No drafts yet.
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {draftGroups.map(({ label, slides }) => (
+                  <div key={label} className="space-y-3">
+                    <hr className="border-[var(--color-border)]" />
+                    <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
+                    {slides.map((slideshow: Slideshow) => (
+                      <button
+                        key={slideshow.id}
+                        onClick={async () => {
+                          // Auto-save current slide if it has unsaved changes before switching slideshows
+                          if (hasUnsavedChanges && selectedSlideId && currentSlide) {
+                            console.log('Auto-saving before switching slideshows...');
+                            await autoSaveSlide(selectedSlideId, currentSlide);
+                          }
+
+                          setSelectedSlideshowId(slideshow.id);
+                          setSelectedSlideId(slideshow.slides[0]?.id || '');
+
+                          // Center the first slide of the selected slideshow after a delay
+                          if (slideshow.slides.length > 0) {
+                            centerSlide(slideshow.slides[0].id, 100);
+                          }
+                        }}
+                        className="w-full text-left"
+                      >
+                        {slideshow.slides[0]?.backgroundImage && (
+                          <img
+                            src={slideshow.slides[0].backgroundImage}
+                            alt="Draft thumbnail"
+                            className="w-full rounded-xl border border-[var(--color-border)]"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main Center Area */}
