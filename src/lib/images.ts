@@ -231,13 +231,11 @@ export async function deleteImage(imageId: string) {
 
 export function getImageUrl(filePath: string) {
   try {
-    console.log('Getting image URL for path:', filePath)
     
     const { data } = supabase.storage
       .from('user-images')
       .getPublicUrl(filePath)
     
-    console.log('Generated URL:', data.publicUrl)
     return data.publicUrl
   } catch (error) {
     console.error('Error generating image URL:', error)

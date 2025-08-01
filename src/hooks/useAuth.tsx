@@ -38,8 +38,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to insert user')
       }
-      
-      console.log('✅ User inserted successfully')
     } catch (error) {
       console.error('❌ Error inserting user:', error)
     }

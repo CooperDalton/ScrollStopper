@@ -359,10 +359,6 @@ export default function SlideshowEditor() {
   useEffect(() => {
     if (currentSlide) {
       previousSlideRef.current = { ...currentSlide };
-      console.log('Updated previousSlideRef for slide:', currentSlide.id, {
-        textsCount: currentSlide.texts?.length || 0,
-        overlaysCount: currentSlide.overlays?.length || 0
-      });
     }
   }, [currentSlide]);
 
@@ -1349,7 +1345,6 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
-      console.log('Setting hasUnsavedChanges to true for text update');
       setHasUnsavedChanges(true);
 
       if (
@@ -1387,7 +1382,6 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
-      console.log('Setting hasUnsavedChanges to true for overlay update');
       setHasUnsavedChanges(true);
     }
   };
@@ -1618,10 +1612,96 @@ export default function SlideshowEditor() {
     const handleRender = async () => {
       if (!currentSlideshow) return;
       setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+      
       try {
+        // Create a custom getSlideCanvas function that creates temporary canvases for rendering
+        const getSlideCanvasForRender = async (slideId: string) => {
+          // If canvas already exists, return it
+          if (canvasRefs.current[slideId]) {
+            return canvasRefs.current[slideId];
+          }
+          
+          // Create a temporary canvas element for rendering
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = CANVAS_WIDTH;
+          tempCanvas.height = CANVAS_HEIGHT;
+          
+          console.log(`Creating temporary canvas for slide ${slideId} for rendering`);
+          
+          try {
+            // Initialize a temporary canvas
+            const canvas = new fabric.Canvas(tempCanvas, {
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              backgroundColor: '#ffffff'
+            });
+            
+            // Get the slide data
+            const slide = currentSlideshow.slides.find(s => s.id === slideId);
+            if (!slide) {
+              console.warn(`Slide ${slideId} not found in current slideshow`);
+              return undefined;
+            }
+            
+            // Add background image if exists
+            if (slide.backgroundImage) {
+              const img = await fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' });
+              img.set({
+                selectable: false,
+                evented: false,
+                isBackground: true
+              });
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+            }
+            
+            // Add text elements
+            if (slide.texts && slide.texts.length > 0) {
+              for (const textData of slide.texts) {
+                const fabricText = new fabric.IText(textData.text, {
+                  ...getTextStyling(textData.size),
+                  left: textData.position_x,
+                  top: textData.position_y,
+                  fontSize: textData.size,
+                  angle: textData.rotation,
+                  textId: textData.id
+                });
+                canvas.add(fabricText);
+              }
+            }
+            
+            // Add image overlays
+            if (slide.overlays && slide.overlays.length > 0) {
+              for (const overlayData of slide.overlays) {
+                if (overlayData.imageUrl) {
+                  const img = await fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+                  img.set({
+                    left: overlayData.position_x,
+                    top: overlayData.position_y,
+                    scaleX: overlayData.size / 100,
+                    scaleY: overlayData.size / 100,
+                    angle: overlayData.rotation,
+                    selectable: false,
+                    evented: false
+                  });
+                  canvas.add(img);
+                }
+              }
+            }
+            
+            canvas.renderAll();
+            console.log(`Successfully created temporary canvas for slide ${slideId}`);
+            return canvas;
+            
+          } catch (error) {
+            console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
+            return undefined;
+          }
+        };
+        
         await renderSlideshow(
           currentSlideshow.id,
-          (id) => canvasRefs.current[id],
+          getSlideCanvasForRender,
           (completed) =>
             setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
         );

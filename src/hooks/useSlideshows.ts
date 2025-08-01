@@ -680,7 +680,7 @@ export function useSlideshows() {
 
   const renderSlideshow = async (
     slideshowId: string,
-    getSlideCanvas: (slideId: string) => fabric.Canvas | undefined,
+    getSlideCanvas: (slideId: string) => fabric.Canvas | undefined | Promise<fabric.Canvas | undefined>,
     onProgress?: (completed: number, total: number) => void
   ) => {
     if (!user) {
@@ -700,52 +700,71 @@ export function useSlideshows() {
     try {
       const bucket = 'rendered-slides'
 
-      // Ensure the bucket exists (ignore errors if it already exists)
-      await supabase.storage.createBucket(bucket).catch(() => undefined)
-
+      // Skip bucket creation - assume it exists or handle errors gracefully
       const framePaths: string[] = []
 
       for (let i = 0; i < slideshow.slides.length; i++) {
         const slide = slideshow.slides[i]
-        const canvas = getSlideCanvas(slide.id)
-        if (!canvas) continue
+        console.log(`Processing slide ${i + 1}/${total}:`, slide.id)
+        
+        const canvas = await getSlideCanvas(slide.id)
+        console.log(`Canvas lookup result for slide ${slide.id}:`, canvas ? 'Found' : 'Not found')
+        
+        if (!canvas) {
+          console.log(`No canvas found for slide ${slide.id}, skipping...`)
+          console.log(`Available slides in slideshow:`, slideshow.slides.map(s => ({ id: s.id, index: s.index })))
+          continue
+        }
+        
+        console.log(`Canvas found for slide ${slide.id}, rendering...`)
 
         const multiplier = 1080 / 300
         const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
         const file = await (await fetch(dataUrl)).blob()
         const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
-        await supabase.storage.from(bucket).upload(path, file, {
-          upsert: true,
-          contentType: 'image/jpeg'
-        })
-
-        // Update slide file_paths column if present
+        
+        console.log(`Uploading slide ${slide.id} to path:`, path)
+        
         try {
-          const { data: slideData } = await supabase
-            .from('slides')
-            .select('file_paths')
-            .eq('id', slide.id)
-            .single()
-
-          const currentPaths: string[] = Array.isArray(slideData?.file_paths)
-            ? slideData?.file_paths
-            : []
-          await supabase
-            .from('slides')
-            .update({ file_paths: [...currentPaths, path] })
-            .eq('id', slide.id)
-        } catch {
-          // Ignore if column doesn't exist or update fails
+          const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
+            upsert: true,
+            contentType: 'image/jpeg'
+          })
+          
+          if (uploadError) {
+            console.error('Upload error for slide', slide.id, ':', uploadError)
+            throw uploadError
+          }
+          
+          console.log(`Successfully uploaded slide ${slide.id}`)
+          
+          // Note: frame_paths is stored in slideshows table, not slides table
+          // Individual slide frame paths are tracked in the slideshows.frame_paths array
+          
+          framePaths.push(path)
+          console.log(`Added slide ${slide.id} to framePaths. Total frames:`, framePaths.length)
+        } catch (uploadError) {
+          console.error('Failed to upload slide frame:', uploadError)
+          // Continue with other slides even if one fails
         }
 
-        framePaths.push(path)
         onProgress?.(i + 1, total)
+        console.log(`Completed slide ${i + 1}/${total}`)
       }
 
-      await supabase
+      console.log('All slides processed. Final framePaths:', framePaths)
+      
+      const { error: finalUpdateError } = await supabase
         .from('slideshows')
         .update({ status: 'completed', frame_paths: framePaths })
         .eq('id', slideshowId)
+        
+      if (finalUpdateError) {
+        console.error('Error updating slideshow status:', finalUpdateError)
+        throw finalUpdateError
+      }
+      
+      console.log('Successfully updated slideshow status to completed')
 
       setSlideshows(prev =>
         prev.map(s =>
