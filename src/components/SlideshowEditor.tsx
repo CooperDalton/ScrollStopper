@@ -4,7 +4,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import * as fabric from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
+import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
+import { supabase } from '@/lib/supabase';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 
 // Icons
@@ -59,11 +61,10 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, refetch } = useSlideshows();
+  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, refetch } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-
   const [selectedSlideshowId, setSelectedSlideshowId] = useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = useState<string>('');
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
@@ -81,6 +82,9 @@ export default function SlideshowEditor() {
     const mode = searchParams.get('mode');
     return mode === 'drafts' ? 'drafts' : 'create';
   });
+  const [renderProgress, setRenderProgress] = useState<{[key:string]: number}>({});
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const updateModeInUrl = (mode: 'create' | 'drafts') => {
     const params = new URLSearchParams(searchParams.toString());
@@ -341,6 +345,10 @@ export default function SlideshowEditor() {
     return groups.filter(g => g.slides.length > 0);
   }, [draftSlideshows]);
 
+  const completedSlideshows = React.useMemo(() => {
+    return displaySlideshows.filter(s => s.status === 'completed');
+  }, [displaySlideshows]);
+
   const aspectRatio = parseAspectRatio(currentSlideshow?.aspect_ratio || '9:16');
   const CANVAS_WIDTH = 300;
   const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio);
@@ -384,10 +392,6 @@ export default function SlideshowEditor() {
   useEffect(() => {
     if (currentSlide) {
       previousSlideRef.current = { ...currentSlide };
-      console.log('Updated previousSlideRef for slide:', currentSlide.id, {
-        textsCount: currentSlide.texts?.length || 0,
-        overlaysCount: currentSlide.overlays?.length || 0
-      });
     }
   }, [currentSlide]);
 
@@ -547,7 +551,7 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -794,7 +798,7 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage).then((img: fabric.Image) => {
+        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -921,7 +925,7 @@ export default function SlideshowEditor() {
 
     slide.overlays.forEach((overlayData: SlideOverlay) => {
       if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             left: overlayData.position_x,
             top: overlayData.position_y,
@@ -994,7 +998,7 @@ export default function SlideshowEditor() {
 
     slide.overlays.forEach((overlayData: SlideOverlay) => {
       if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             left: overlayData.position_x,
             top: overlayData.position_y,
@@ -1374,7 +1378,6 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
-      console.log('Setting hasUnsavedChanges to true for text update');
       setHasUnsavedChanges(true);
 
       if (
@@ -1412,7 +1415,6 @@ export default function SlideshowEditor() {
       });
       
       // Mark as having unsaved changes
-      console.log('Setting hasUnsavedChanges to true for overlay update');
       setHasUnsavedChanges(true);
     }
   };
@@ -1442,7 +1444,7 @@ export default function SlideshowEditor() {
         });
 
         // Add new background image
-        fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+        fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -1482,7 +1484,7 @@ export default function SlideshowEditor() {
     // Add to canvas first to get image dimensions
     const canvas = canvasRefs.current[selectedSlideId];
     if (canvas) {
-      fabric.Image.fromURL(imageUrl).then((img: fabric.Image) => {
+      fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
         // Calculate smart sizing based on image dimensions
         const canvasWidth = CANVAS_WIDTH;
         const canvasHeight = CANVAS_HEIGHT;
@@ -1640,6 +1642,113 @@ export default function SlideshowEditor() {
     }
   };
 
+    const handleRender = async () => {
+      if (!currentSlideshow) return;
+      setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+      
+      try {
+        // Create a custom getSlideCanvas function that creates temporary canvases for rendering
+        const getSlideCanvasForRender = async (slideId: string) => {
+          // If canvas already exists, return it
+          if (canvasRefs.current[slideId]) {
+            return canvasRefs.current[slideId];
+          }
+          
+          // Create a temporary canvas element for rendering
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = CANVAS_WIDTH;
+          tempCanvas.height = CANVAS_HEIGHT;
+          
+          console.log(`Creating temporary canvas for slide ${slideId} for rendering`);
+          
+          try {
+            // Initialize a temporary canvas
+            const canvas = new fabric.Canvas(tempCanvas, {
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              backgroundColor: '#ffffff'
+            });
+            
+            // Get the slide data
+            const slide = currentSlideshow.slides.find(s => s.id === slideId);
+            if (!slide) {
+              console.warn(`Slide ${slideId} not found in current slideshow`);
+              return undefined;
+            }
+            
+            // Add background image if exists
+            if (slide.backgroundImage) {
+              const img = await fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' });
+              img.set({
+                selectable: false,
+                evented: false,
+                isBackground: true
+              });
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+            }
+            
+            // Add text elements
+            if (slide.texts && slide.texts.length > 0) {
+              for (const textData of slide.texts) {
+                const fabricText = new fabric.IText(textData.text, {
+                  ...getTextStyling(textData.size),
+                  left: textData.position_x,
+                  top: textData.position_y,
+                  fontSize: textData.size,
+                  angle: textData.rotation,
+                  textId: textData.id
+                });
+                canvas.add(fabricText);
+              }
+            }
+            
+            // Add image overlays
+            if (slide.overlays && slide.overlays.length > 0) {
+              for (const overlayData of slide.overlays) {
+                if (overlayData.imageUrl) {
+                  const img = await fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+                  img.set({
+                    left: overlayData.position_x,
+                    top: overlayData.position_y,
+                    scaleX: overlayData.size / 100,
+                    scaleY: overlayData.size / 100,
+                    angle: overlayData.rotation,
+                    selectable: false,
+                    evented: false
+                  });
+                  canvas.add(img);
+                }
+              }
+            }
+            
+            canvas.renderAll();
+            console.log(`Successfully created temporary canvas for slide ${slideId}`);
+            return canvas;
+            
+          } catch (error) {
+            console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
+            return undefined;
+          }
+        };
+        
+        await renderSlideshow(
+          currentSlideshow.id,
+          getSlideCanvasForRender,
+          (completed) =>
+            setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+        );
+      } catch (err) {
+        console.error('Failed to render slideshow:', err);
+      } finally {
+        setRenderProgress(prev => {
+          const updated = { ...prev };
+          delete updated[currentSlideshow.id];
+          return updated;
+        });
+      }
+    };
+
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       {/* Left Sidebar - Slideshows */}
@@ -1695,6 +1804,50 @@ export default function SlideshowEditor() {
                 <option value="4:5">4:5</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {sidebarMode === 'create' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-3">My Videos</h3>
+            {completedSlideshows.length === 0 && Object.keys(renderProgress).length === 0 ? (
+              <div className="text-center text-[var(--color-text-muted)]">No videos yet.</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {completedSlideshows.map(slideshow => {
+                  const bucket = 'rendered-slides';
+                  const first = slideshow.frame_paths?.[0]
+                    ? supabase.storage.from(bucket).getPublicUrl(slideshow.frame_paths[0]).data.publicUrl
+                    : null;
+                  return (
+                    <button
+                      key={slideshow.id}
+                      onClick={() => {
+                        const urls = (slideshow.frame_paths || []).map(p =>
+                          supabase.storage.from(bucket).getPublicUrl(p).data.publicUrl
+                        );
+                        setPreviewImages(urls);
+                        setIsPreviewOpen(true);
+                      }}
+                    >
+                      {first ? (
+                        <img src={first} className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]" />
+                      ) : (
+                        <div className="w-full h-24 bg-gray-200 rounded-xl" />
+                      )}
+                    </button>
+                  );
+                })}
+                {Object.entries(renderProgress).map(([id, count]) => {
+                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
+                  return (
+                    <div key={id} className="w-full h-24 bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
+                      {count}/{total}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1939,12 +2092,19 @@ export default function SlideshowEditor() {
               >
                 <ImageIcon />
               </button>
-              <button 
+              <button
                 onClick={handleDurationClick}
                 className="px-4 py-2 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
                 title="Slide Duration"
               >
                 {currentSlide?.duration_seconds || 3}s
+              </button>
+              <button
+                onClick={handleRender}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
+                title="Create"
+              >
+                Create
               </button>
             </div>
           </div>
@@ -1966,6 +2126,13 @@ export default function SlideshowEditor() {
         onImageSelect={handleImageOverlaySelect}
         title="Select Image"
       />
+
+      <SlideshowPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        imageUrls={previewImages}
+        title="Video Preview"
+      />
     </div>
   );
-} 
+}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
+import type * as fabric from 'fabric'
 
 export interface SlideText {
   id: string;
@@ -677,6 +678,109 @@ export function useSlideshows() {
     }
   }
 
+  const renderSlideshow = async (
+    slideshowId: string,
+    getSlideCanvas: (slideId: string) => fabric.Canvas | undefined | Promise<fabric.Canvas | undefined>,
+    onProgress?: (completed: number, total: number) => void
+  ) => {
+    if (!user) {
+      throw new Error('User must be authenticated to render slideshows')
+    }
+
+    const slideshow = slideshows.find(s => s.id === slideshowId)
+    if (!slideshow) throw new Error('Slideshow not found')
+
+    const total = slideshow.slides.length
+
+    // Update status locally immediately
+    setSlideshows(prev =>
+      prev.map(s => (s.id === slideshowId ? { ...s, status: 'rendering' } : s))
+    )
+
+    try {
+      const bucket = 'rendered-slides'
+
+      // Skip bucket creation - assume it exists or handle errors gracefully
+      const framePaths: string[] = []
+
+      for (let i = 0; i < slideshow.slides.length; i++) {
+        const slide = slideshow.slides[i]
+        console.log(`Processing slide ${i + 1}/${total}:`, slide.id)
+        
+        const canvas = await getSlideCanvas(slide.id)
+        console.log(`Canvas lookup result for slide ${slide.id}:`, canvas ? 'Found' : 'Not found')
+        
+        if (!canvas) {
+          console.log(`No canvas found for slide ${slide.id}, skipping...`)
+          console.log(`Available slides in slideshow:`, slideshow.slides.map(s => ({ id: s.id, index: s.index })))
+          continue
+        }
+        
+        console.log(`Canvas found for slide ${slide.id}, rendering...`)
+
+        const multiplier = 1080 / 300
+        const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
+        const file = await (await fetch(dataUrl)).blob()
+        const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
+        
+        console.log(`Uploading slide ${slide.id} to path:`, path)
+        
+        try {
+          const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
+            upsert: true,
+            contentType: 'image/jpeg'
+          })
+          
+          if (uploadError) {
+            console.error('Upload error for slide', slide.id, ':', uploadError)
+            throw uploadError
+          }
+          
+          console.log(`Successfully uploaded slide ${slide.id}`)
+          
+          // Note: frame_paths is stored in slideshows table, not slides table
+          // Individual slide frame paths are tracked in the slideshows.frame_paths array
+          
+          framePaths.push(path)
+          console.log(`Added slide ${slide.id} to framePaths. Total frames:`, framePaths.length)
+        } catch (uploadError) {
+          console.error('Failed to upload slide frame:', uploadError)
+          // Continue with other slides even if one fails
+        }
+
+        onProgress?.(i + 1, total)
+        console.log(`Completed slide ${i + 1}/${total}`)
+      }
+
+      console.log('All slides processed. Final framePaths:', framePaths)
+      
+      const { error: finalUpdateError } = await supabase
+        .from('slideshows')
+        .update({ status: 'completed', frame_paths: framePaths })
+        .eq('id', slideshowId)
+        
+      if (finalUpdateError) {
+        console.error('Error updating slideshow status:', finalUpdateError)
+        throw finalUpdateError
+      }
+      
+      console.log('Successfully updated slideshow status to completed')
+
+      setSlideshows(prev =>
+        prev.map(s =>
+          s.id === slideshowId ? { ...s, status: 'completed', frame_paths: framePaths } : s
+        )
+      )
+    } catch (err) {
+      console.error('Error rendering slideshow:', err)
+      // Rollback status
+      setSlideshows(prev =>
+        prev.map(s => (s.id === slideshowId ? { ...s, status: 'draft' } : s))
+      )
+      throw err
+    }
+  }
+
   return {
     slideshows,
     loading,
@@ -688,6 +792,7 @@ export function useSlideshows() {
     saveSlideOverlays,
     updateSlideBackground,
     updateSlideDuration,
+    renderSlideshow,
     refetch: fetchSlideshows
   }
-} 
+}
