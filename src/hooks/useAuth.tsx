@@ -52,9 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null)
       setLoading(false)
       
-      if (session?.user) {
-        await insertUserToDB(session.user)
-      }
     }
 
     getInitialSession()
