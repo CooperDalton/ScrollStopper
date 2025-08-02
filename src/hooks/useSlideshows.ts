@@ -60,6 +60,7 @@ export function useSlideshows() {
   const [slideshows, setSlideshows] = useState<Slideshow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const { user } = useAuth()
 
   const fetchSlideshows = async () => {
@@ -72,6 +73,7 @@ export function useSlideshows() {
     try {
       setLoading(true)
       setError(null)
+      setNotice(null)
 
       // Fetch slideshows with their slides
       const { data: slideshowsData, error: slideshowsError } = await supabase
@@ -133,7 +135,7 @@ export function useSlideshows() {
       if (slideshowsError) throw slideshowsError
 
       // Transform the data to match our interface
-      const transformedSlideshows: Slideshow[] = (slideshowsData || []).map(slideshow => ({
+      let transformedSlideshows: Slideshow[] = (slideshowsData || []).map(slideshow => ({
         ...slideshow,
         slides: (slideshow.slides || [])
           .sort((a: any, b: any) => (a.index || 0) - (b.index || 0)) // Sort by index, treating null as 0
@@ -147,6 +149,28 @@ export function useSlideshows() {
             backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
           }))
       }))
+
+      // Detect slideshows stuck in rendering with incomplete frame paths
+      const interrupted = transformedSlideshows.filter(
+        s =>
+          s.status === 'rendering' &&
+          (!s.frame_paths || s.frame_paths.length < s.slides.length)
+      )
+
+      if (interrupted.length > 0) {
+        const ids = interrupted.map(s => s.id)
+        const { error: updateError } = await supabase
+          .from('slideshows')
+          .update({ status: 'draft' })
+          .in('id', ids)
+        if (updateError) {
+          console.error('Failed to reset interrupted slideshows:', updateError)
+        }
+        transformedSlideshows = transformedSlideshows.map(s =>
+          ids.includes(s.id) ? { ...s, status: 'draft' } : s
+        )
+        setNotice('Rendering interrupted – please re-render.')
+      }
 
       setSlideshows(transformedSlideshows)
     } catch (err) {
@@ -793,6 +817,7 @@ export function useSlideshows() {
     updateSlideBackground,
     updateSlideDuration,
     renderSlideshow,
-    refetch: fetchSlideshows
+    refetch: fetchSlideshows,
+    notice
   }
 }
