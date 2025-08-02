@@ -61,7 +61,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, refetch } = useSlideshows();
+  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, refetch } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -1862,54 +1862,61 @@ export default function SlideshowEditor() {
               <div className="text-center text-red-500 py-8">
                 Error: {error}
               </div>
-            ) : draftSlideshows.length === 0 ? (
-              <div className="text-center text-[var(--color-text-muted)] py-8">
-                No drafts yet.
-              </div>
             ) : (
-              <div className="space-y-6">
-                {draftGroups.map(({ label, slides }) => (
-                  <div key={label} className="space-y-3">
-                    <hr className="border-[var(--color-border)]" />
-                    <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {slides.map((slideshow: Slideshow) => (
-                        <button
-                          key={slideshow.id}
-                          onClick={async () => {
-                            // Auto-save current slide if it has unsaved changes before switching slideshows
-                            if (hasUnsavedChanges && selectedSlideId && currentSlide) {
-                              console.log('Auto-saving before switching slideshows...');
-                              await autoSaveSlide(selectedSlideId, currentSlide);
-                            }
-
-                            setSelectedSlideshowId(slideshow.id);
-                            setSelectedSlideId(slideshow.slides[0]?.id || '');
-
-                            // Center the first slide of the selected slideshow after a delay
-                            if (slideshow.slides.length > 0) {
-                              centerSlide(slideshow.slides[0].id, 100);
-                            }
-                          }}
-                          className="text-left"
-                        >
-                          {slideshow.slides[0]?.backgroundImage ? (
-                            <img
-                              src={slideshow.slides[0].backgroundImage}
-                              alt="Draft thumbnail"
-                              className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]"
-                            />
-                          ) : (
-                            <div className="w-full h-24 flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
-                              No Image
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+              <>
+                {notice && (
+                  <div className="text-center text-amber-500 py-2">{notice}</div>
+                )}
+                {draftSlideshows.length === 0 ? (
+                  <div className="text-center text-[var(--color-text-muted)] py-8">
+                    No drafts yet.
                   </div>
-                ))}
-              </div>
+                ) : (
+                  <div className="space-y-6">
+                    {draftGroups.map(({ label, slides }) => (
+                      <div key={label} className="space-y-3">
+                        <hr className="border-[var(--color-border)]" />
+                        <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {slides.map((slideshow: Slideshow) => (
+                            <button
+                              key={slideshow.id}
+                              onClick={async () => {
+                                // Auto-save current slide if it has unsaved changes before switching slideshows
+                                if (hasUnsavedChanges && selectedSlideId && currentSlide) {
+                                  console.log('Auto-saving before switching slideshows...');
+                                  await autoSaveSlide(selectedSlideId, currentSlide);
+                                }
+
+                                setSelectedSlideshowId(slideshow.id);
+                                setSelectedSlideId(slideshow.slides[0]?.id || '');
+
+                                // Center the first slide of the selected slideshow after a delay
+                                if (slideshow.slides.length > 0) {
+                                  centerSlide(slideshow.slides[0].id, 100);
+                                }
+                              }}
+                              className="text-left"
+                            >
+                              {slideshow.slides[0]?.backgroundImage ? (
+                                <img
+                                  src={slideshow.slides[0].backgroundImage}
+                                  alt="Draft thumbnail"
+                                  className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]"
+                                />
+                              ) : (
+                                <div className="w-full h-24 flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
+                                  No Image
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
