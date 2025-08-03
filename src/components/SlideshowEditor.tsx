@@ -61,7 +61,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds } = useSlideshows();
+  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -85,6 +85,7 @@ export default function SlideshowEditor() {
   const [renderProgress, setRenderProgress] = useState<{[key:string]: number}>({});
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewSlideshowId, setPreviewSlideshowId] = useState<string | null>(null);
 
   const updateModeInUrl = (mode: 'create' | 'drafts') => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1847,6 +1848,7 @@ export default function SlideshowEditor() {
                           supabase.storage.from(bucket).getPublicUrl(p).data.publicUrl
                         );
                         setPreviewImages(urls);
+                        setPreviewSlideshowId(slideshow.id);
                         setIsPreviewOpen(true);
                       }}
                     >
@@ -2156,9 +2158,23 @@ export default function SlideshowEditor() {
 
       <SlideshowPreviewModal
         isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewSlideshowId(null);
+          setPreviewImages([]);
+        }}
         imageUrls={previewImages}
         title="Video Preview"
+        onDelete={async () => {
+          if (!previewSlideshowId) return;
+          try {
+            await deleteSlideshow(previewSlideshowId);
+          } finally {
+            setIsPreviewOpen(false);
+            setPreviewSlideshowId(null);
+            setPreviewImages([]);
+          }
+        }}
       />
     </div>
   );
