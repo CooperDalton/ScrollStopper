@@ -61,6 +61,7 @@ export function useSlideshows() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [rerenderIds, setRerenderIds] = useState<string[]>([])
   const { user } = useAuth()
 
   const fetchSlideshows = async () => {
@@ -150,26 +151,45 @@ export function useSlideshows() {
           }))
       }))
 
-      // Detect slideshows stuck in rendering with incomplete frame paths
-      const interrupted = transformedSlideshows.filter(
-        s =>
-          s.status === 'rendering' &&
-          (!s.frame_paths || s.frame_paths.length < s.slides.length)
-      )
+      // Find slideshows left in rendering state and prepare them for restart
+      const interruptedIds: string[] = []
+      for (const s of transformedSlideshows) {
+        if (s.status === 'rendering') {
+          const bucket = 'rendered-slides'
+          const folder = `${user.id}/${s.id}`
+          const { data: files, error: listError } = await supabase.storage
+            .from(bucket)
+            .list(folder, { limit: 1000 })
+          if (listError) {
+            console.error('Failed to list rendered slides:', listError)
+          } else if (files && files.length > 0) {
+            const paths = files.map(f => `${folder}/${f.name}`)
+            const { error: removeError } = await supabase.storage
+              .from(bucket)
+              .remove(paths)
+            if (removeError) {
+              console.error('Failed to remove rendered slides:', removeError)
+            }
+          }
 
-      if (interrupted.length > 0) {
-        const ids = interrupted.map(s => s.id)
-        const { error: updateError } = await supabase
-          .from('slideshows')
-          .update({ status: 'draft' })
-          .in('id', ids)
-        if (updateError) {
-          console.error('Failed to reset interrupted slideshows:', updateError)
+          const { error: updateError } = await supabase
+            .from('slideshows')
+            .update({ frame_paths: [], status: 'rendering' })
+            .eq('id', s.id)
+          if (updateError) {
+            console.error('Failed to reset slideshow:', updateError)
+          } else {
+            s.frame_paths = []
+          }
+          interruptedIds.push(s.id)
         }
-        transformedSlideshows = transformedSlideshows.map(s =>
-          ids.includes(s.id) ? { ...s, status: 'draft' } : s
-        )
-        setNotice('Rendering interrupted – please re-render.')
+      }
+
+      if (interruptedIds.length > 0) {
+        setNotice('Render was interrupted. Restarting render.')
+        setRerenderIds(interruptedIds)
+      } else {
+        setRerenderIds([])
       }
 
       setSlideshows(transformedSlideshows)
@@ -716,9 +736,20 @@ export function useSlideshows() {
 
     const total = slideshow.slides.length
 
-    // Update status locally immediately
+    const { error: statusError } = await supabase
+      .from('slideshows')
+      .update({ status: 'rendering', frame_paths: [] })
+      .eq('id', slideshowId)
+
+    if (statusError) {
+      console.error('Failed to set slideshow status to rendering:', statusError)
+      throw statusError
+    }
+
     setSlideshows(prev =>
-      prev.map(s => (s.id === slideshowId ? { ...s, status: 'rendering' } : s))
+      prev.map(s =>
+        s.id === slideshowId ? { ...s, status: 'rendering', frame_paths: [] } : s
+      )
     )
 
     try {
@@ -818,6 +849,8 @@ export function useSlideshows() {
     updateSlideDuration,
     renderSlideshow,
     refetch: fetchSlideshows,
-    notice
+    notice,
+    rerenderIds,
+    clearRerenderIds: () => setRerenderIds([])
   }
 }

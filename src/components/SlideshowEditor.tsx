@@ -61,7 +61,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, refetch } = useSlideshows();
+  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -1642,100 +1642,120 @@ export default function SlideshowEditor() {
     }
   };
 
+  const createGetSlideCanvas = (slideshow: Slideshow) => async (slideId: string) => {
+    // If canvas already exists in refs, return it
+    if (canvasRefs.current[slideId]) {
+      return canvasRefs.current[slideId];
+    }
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = CANVAS_WIDTH;
+    tempCanvas.height = CANVAS_HEIGHT;
+
+    try {
+      const canvas = new fabric.Canvas(tempCanvas, {
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+        backgroundColor: '#ffffff'
+      });
+
+      const slide = slideshow.slides.find(s => s.id === slideId);
+      if (!slide) {
+        console.warn(`Slide ${slideId} not found in slideshow ${slideshow.id}`);
+        return undefined;
+      }
+
+      if (slide.backgroundImage) {
+        const img = await fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' });
+        img.set({ selectable: false, evented: false, isBackground: true });
+        scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+        canvas.add(img);
+      }
+
+      if (slide.texts && slide.texts.length > 0) {
+        for (const textData of slide.texts) {
+          const fabricText = new fabric.IText(textData.text, {
+            ...getTextStyling(textData.size),
+            left: textData.position_x,
+            top: textData.position_y,
+            fontSize: textData.size,
+            angle: textData.rotation,
+            textId: textData.id
+          });
+          canvas.add(fabricText);
+        }
+      }
+
+      if (slide.overlays && slide.overlays.length > 0) {
+        for (const overlayData of slide.overlays) {
+          if (overlayData.imageUrl) {
+            const img = await fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+            img.set({
+              left: overlayData.position_x,
+              top: overlayData.position_y,
+              scaleX: overlayData.size / 100,
+              scaleY: overlayData.size / 100,
+              angle: overlayData.rotation,
+              selectable: false,
+              evented: false
+            });
+            canvas.add(img);
+          }
+        }
+      }
+
+      canvas.renderAll();
+      return canvas;
+    } catch (error) {
+      console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
+      return undefined;
+    }
+  };
+
+  const rerendered = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (rerenderIds.length === 0) return;
+    rerenderIds.forEach(id => {
+      if (rerendered.current.has(id)) return;
+      const slideshow = slideshows.find(s => s.id === id);
+      if (!slideshow) return;
+      rerendered.current.add(id);
+      const run = async () => {
+        setRenderProgress(prev => ({ ...prev, [id]: 0 }));
+        try {
+          const getSlideCanvas = createGetSlideCanvas(slideshow);
+          await renderSlideshow(
+            id,
+            getSlideCanvas,
+            completed =>
+              setRenderProgress(prev => ({ ...prev, [id]: completed }))
+          );
+        } catch (err) {
+          console.error('Failed to re-render slideshow:', err);
+        } finally {
+          setRenderProgress(prev => {
+            const updated = { ...prev };
+            delete updated[id];
+            return updated;
+          });
+        }
+      };
+      run();
+    });
+    clearRerenderIds();
+  }, [rerenderIds, slideshows, renderSlideshow, clearRerenderIds, createGetSlideCanvas]);
+
     const handleRender = async () => {
       if (!currentSlideshow) return;
       setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
-      
+
       try {
-        // Create a custom getSlideCanvas function that creates temporary canvases for rendering
-        const getSlideCanvasForRender = async (slideId: string) => {
-          // If canvas already exists, return it
-          if (canvasRefs.current[slideId]) {
-            return canvasRefs.current[slideId];
-          }
-          
-          // Create a temporary canvas element for rendering
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = CANVAS_WIDTH;
-          tempCanvas.height = CANVAS_HEIGHT;
-          
-          console.log(`Creating temporary canvas for slide ${slideId} for rendering`);
-          
-          try {
-            // Initialize a temporary canvas
-            const canvas = new fabric.Canvas(tempCanvas, {
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
-              backgroundColor: '#ffffff'
-            });
-            
-            // Get the slide data
-            const slide = currentSlideshow.slides.find(s => s.id === slideId);
-            if (!slide) {
-              console.warn(`Slide ${slideId} not found in current slideshow`);
-              return undefined;
-            }
-            
-            // Add background image if exists
-            if (slide.backgroundImage) {
-              const img = await fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' });
-              img.set({
-                selectable: false,
-                evented: false,
-                isBackground: true
-              });
-              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
-              canvas.add(img);
-            }
-            
-            // Add text elements
-            if (slide.texts && slide.texts.length > 0) {
-              for (const textData of slide.texts) {
-                const fabricText = new fabric.IText(textData.text, {
-                  ...getTextStyling(textData.size),
-                  left: textData.position_x,
-                  top: textData.position_y,
-                  fontSize: textData.size,
-                  angle: textData.rotation,
-                  textId: textData.id
-                });
-                canvas.add(fabricText);
-              }
-            }
-            
-            // Add image overlays
-            if (slide.overlays && slide.overlays.length > 0) {
-              for (const overlayData of slide.overlays) {
-                if (overlayData.imageUrl) {
-                  const img = await fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' });
-                  img.set({
-                    left: overlayData.position_x,
-                    top: overlayData.position_y,
-                    scaleX: overlayData.size / 100,
-                    scaleY: overlayData.size / 100,
-                    angle: overlayData.rotation,
-                    selectable: false,
-                    evented: false
-                  });
-                  canvas.add(img);
-                }
-              }
-            }
-            
-            canvas.renderAll();
-            console.log(`Successfully created temporary canvas for slide ${slideId}`);
-            return canvas;
-            
-          } catch (error) {
-            console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
-            return undefined;
-          }
-        };
-        
+        const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
+
         await renderSlideshow(
           currentSlideshow.id,
           getSlideCanvasForRender,
-          (completed) =>
+          completed =>
             setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
         );
       } catch (err) {
