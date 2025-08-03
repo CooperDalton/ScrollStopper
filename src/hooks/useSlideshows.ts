@@ -722,6 +722,81 @@ export function useSlideshows() {
     }
   }
 
+  const deleteSlideshow = async (slideshowId: string) => {
+    if (!user) {
+      throw new Error('User must be authenticated to delete slideshows')
+    }
+
+    try {
+      setError(null)
+
+      // Optimistically remove the slideshow from local state
+      setSlideshows(prev => prev.filter(s => s.id !== slideshowId))
+
+      // Remove rendered frames from storage
+      const bucket = 'rendered-slides'
+      const folder = `${user.id}/${slideshowId}`
+      const { data: files, error: listError } = await supabase.storage
+        .from(bucket)
+        .list(folder, { limit: 1000 })
+
+      if (!listError && files && files.length > 0) {
+        const paths = files.map(f => `${folder}/${f.name}`)
+        const { error: removeError } = await supabase.storage
+          .from(bucket)
+          .remove(paths)
+        if (removeError) {
+          console.error('Failed to remove rendered slides:', removeError)
+        }
+      } else if (listError) {
+        console.error('Failed to list rendered slides:', listError)
+      }
+
+      // Fetch slide IDs to remove related data
+      const { data: slideData, error: slidesError } = await supabase
+        .from('slides')
+        .select('id')
+        .eq('slideshow_id', slideshowId)
+
+      if (slidesError) throw slidesError
+      const slideIds = (slideData || []).map(s => s.id)
+
+      if (slideIds.length > 0) {
+        const { error: deleteTextsError } = await supabase
+          .from('slide_texts')
+          .delete()
+          .in('slide_id', slideIds)
+        if (deleteTextsError) throw deleteTextsError
+
+        const { error: deleteOverlaysError } = await supabase
+          .from('slide_overlays')
+          .delete()
+          .in('slide_id', slideIds)
+        if (deleteOverlaysError) throw deleteOverlaysError
+
+        const { error: deleteSlidesError } = await supabase
+          .from('slides')
+          .delete()
+          .in('id', slideIds)
+        if (deleteSlidesError) throw deleteSlidesError
+      }
+
+      const { error: deleteSlideshowError } = await supabase
+        .from('slideshows')
+        .delete()
+        .eq('id', slideshowId)
+      if (deleteSlideshowError) throw deleteSlideshowError
+
+      return true
+    } catch (err) {
+      console.error('Error deleting slideshow:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete slideshow'
+      setError(errorMessage)
+      await fetchSlideshows()
+      throw new Error(errorMessage)
+    }
+  }
+
   const renderSlideshow = async (
     slideshowId: string,
     getSlideCanvas: (slideId: string) => fabric.Canvas | undefined | Promise<fabric.Canvas | undefined>,
@@ -843,6 +918,7 @@ export function useSlideshows() {
     createSlideshow,
     addSlide,
     deleteSlide,
+    deleteSlideshow,
     saveSlideTexts,
     saveSlideOverlays,
     updateSlideBackground,
