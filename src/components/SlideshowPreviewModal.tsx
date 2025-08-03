@@ -67,9 +67,10 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
             {onDelete && (
               <button
                 onClick={onDelete}
-                className="p-1 text-[var(--color-text-muted)] hover:text-red-500 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
               >
                 <TrashIcon />
+                <span>Delete</span>
               </button>
             )}
             <button
