@@ -61,7 +61,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds } = useSlideshows();
+  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, queueSlideshowRender, rerenderIds, clearRerenderIds } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -1725,7 +1725,7 @@ export default function SlideshowEditor() {
         setRenderProgress(prev => ({ ...prev, [id]: 0 }));
         try {
           const getSlideCanvas = createGetSlideCanvas(slideshow);
-          await renderSlideshow(
+          await queueSlideshowRender(
             id,
             getSlideCanvas,
             completed =>
@@ -1744,31 +1744,31 @@ export default function SlideshowEditor() {
       run();
     });
     clearRerenderIds();
-  }, [rerenderIds, slideshows, renderSlideshow, clearRerenderIds, createGetSlideCanvas]);
+  }, [rerenderIds, slideshows, queueSlideshowRender, clearRerenderIds, createGetSlideCanvas]);
 
-    const handleRender = async () => {
-      if (!currentSlideshow) return;
-      setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+  const handleRender = async () => {
+    if (!currentSlideshow) return;
+    setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
 
-      try {
-        const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
+    try {
+      const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
 
-        await renderSlideshow(
-          currentSlideshow.id,
-          getSlideCanvasForRender,
-          completed =>
-            setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
-        );
-      } catch (err) {
-        console.error('Failed to render slideshow:', err);
-      } finally {
-        setRenderProgress(prev => {
-          const updated = { ...prev };
-          delete updated[currentSlideshow.id];
-          return updated;
-        });
-      }
-    };
+      await queueSlideshowRender(
+        currentSlideshow.id,
+        getSlideCanvasForRender,
+        completed =>
+          setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+      );
+    } catch (err) {
+      console.error('Failed to render slideshow:', err);
+    } finally {
+      setRenderProgress(prev => {
+        const updated = { ...prev };
+        delete updated[currentSlideshow.id];
+        return updated;
+      });
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">

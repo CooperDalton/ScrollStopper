@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
-import type * as fabric from 'fabric'
+import * as fabric from 'fabric'
 
 export interface SlideText {
   id: string;
@@ -56,6 +56,131 @@ export interface Slideshow {
   slides: Slide[];
 }
 
+interface RenderQueueItem {
+  id: string;
+  getSlideCanvas: (slideId: string) => Promise<fabric.Canvas | undefined>;
+  onProgress?: (completed: number, total: number) => void;
+  resolve?: () => void;
+  reject?: (err: unknown) => void;
+}
+
+const parseAspectRatio = (ratio: string) => {
+  const [w, h] = ratio.split(':').map(Number)
+  return w && h ? w / h : 9 / 16
+}
+
+const getTextStyling = (fontSize: number = 24) => ({
+  fontFamily: '"proxima-nova", sans-serif',
+  fontWeight: '600',
+  fontStyle: 'normal',
+  fill: '#ffffff',
+  textAlign: 'center' as const,
+  originX: 'center' as const,
+  originY: 'center' as const,
+  stroke: 'black',
+  charSpacing: -40,
+  lineHeight: 1.0
+})
+
+const scaleImageToFillCanvas = (
+  img: fabric.Image,
+  canvasWidth: number,
+  canvasHeight: number
+) => {
+  const imgWidth = img.width || 1
+  const imgHeight = img.height || 1
+
+  const scaleX = canvasWidth / imgWidth
+  const scaleY = canvasHeight / imgHeight
+  const scale = Math.max(scaleX, scaleY)
+
+  img.set({
+    scaleX: scale,
+    scaleY: scale
+  })
+
+  const scaledWidth = imgWidth * scale
+  const scaledHeight = imgHeight * scale
+  img.set({
+    left: (canvasWidth - scaledWidth) / 2,
+    top: (canvasHeight - scaledHeight) / 2,
+    originX: 'left',
+    originY: 'top'
+  })
+}
+
+const createGetSlideCanvas = (slideshow: Slideshow) => async (
+  slideId: string
+): Promise<fabric.Canvas | undefined> => {
+  const aspectRatio = parseAspectRatio(slideshow.aspect_ratio)
+  const CANVAS_WIDTH = 300
+  const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio)
+
+  const tempCanvasEl = document.createElement('canvas')
+  tempCanvasEl.width = CANVAS_WIDTH
+  tempCanvasEl.height = CANVAS_HEIGHT
+
+  try {
+    const canvas = new fabric.Canvas(tempCanvasEl, {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      backgroundColor: '#ffffff'
+    })
+
+    const slide = slideshow.slides.find(s => s.id === slideId)
+    if (!slide) return undefined
+
+    if (slide.backgroundImage) {
+      const img = await fabric.Image.fromURL(slide.backgroundImage, {
+        crossOrigin: 'anonymous'
+      })
+      img.set({ selectable: false, evented: false, isBackground: true })
+      scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT)
+      canvas.add(img)
+    }
+
+    if (slide.texts) {
+      for (const textData of slide.texts) {
+        const fabricText = new fabric.IText(textData.text, {
+          ...getTextStyling(textData.size),
+          left: textData.position_x,
+          top: textData.position_y,
+          fontSize: textData.size,
+          angle: textData.rotation,
+          textId: textData.id
+        })
+        canvas.add(fabricText)
+      }
+    }
+
+    if (slide.overlays) {
+      for (const overlayData of slide.overlays) {
+        if (overlayData.imageUrl) {
+          const img = await fabric.Image.fromURL(overlayData.imageUrl, {
+            crossOrigin: 'anonymous'
+          })
+          img.set({
+            left: overlayData.position_x,
+            top: overlayData.position_y,
+            scaleX: overlayData.size / 100,
+            scaleY: overlayData.size / 100,
+            angle: overlayData.rotation,
+            selectable: false,
+            evented: false
+          })
+          canvas.add(img)
+        }
+      }
+    }
+
+    canvas.renderAll()
+    return canvas
+  } catch (err) {
+    console.error('Failed to create temporary canvas:', err)
+    return undefined
+  }
+}
+
 export function useSlideshows() {
   const [slideshows, setSlideshows] = useState<Slideshow[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,6 +188,63 @@ export function useSlideshows() {
   const [notice, setNotice] = useState<string | null>(null)
   const [rerenderIds, setRerenderIds] = useState<string[]>([])
   const { user } = useAuth()
+
+  const renderQueue = useRef<RenderQueueItem[]>([])
+  const processingQueue = useRef(false)
+
+  const processRenderQueue = async () => {
+    if (processingQueue.current) return
+    processingQueue.current = true
+    while (renderQueue.current.length > 0) {
+      const item = renderQueue.current.shift()!
+      try {
+        await renderSlideshow(item.id, item.getSlideCanvas, item.onProgress)
+        item.resolve?.()
+      } catch (err) {
+        item.reject?.(err)
+      }
+    }
+    processingQueue.current = false
+  }
+
+  const queueSlideshowRender = async (
+    slideshowId: string,
+    getSlideCanvas?: (slideId: string) => Promise<fabric.Canvas | undefined>,
+    onProgress?: (completed: number, total: number) => void
+  ) => {
+    if (!user) throw new Error('User must be authenticated to render slideshows')
+
+    let getCanvas = getSlideCanvas
+    if (!getCanvas) {
+      const slideshow = slideshows.find(s => s.id === slideshowId)
+      if (!slideshow) throw new Error('Slideshow not found')
+      getCanvas = createGetSlideCanvas(slideshow)
+    }
+
+    const { error: statusError } = await supabase
+      .from('slideshows')
+      .update({ status: 'queued' })
+      .eq('id', slideshowId)
+    if (statusError) {
+      console.error('Failed to set slideshow status to queued:', statusError)
+      throw statusError
+    }
+
+    setSlideshows(prev =>
+      prev.map(s => (s.id === slideshowId ? { ...s, status: 'queued' } : s))
+    )
+
+    return new Promise<void>((resolve, reject) => {
+      renderQueue.current.push({
+        id: slideshowId,
+        getSlideCanvas: getCanvas!,
+        onProgress,
+        resolve,
+        reject
+      })
+      processRenderQueue()
+    })
+  }
 
   const fetchSlideshows = async () => {
     if (!user) {
@@ -193,6 +375,15 @@ export function useSlideshows() {
       }
 
       setSlideshows(transformedSlideshows)
+
+      // Resume any slideshows still queued
+      transformedSlideshows
+        .filter(s => s.status === 'queued')
+        .forEach(s => {
+          queueSlideshowRender(s.id, createGetSlideCanvas(s)).catch(err =>
+            console.error('Failed to queue slideshow render:', err)
+          )
+        })
     } catch (err) {
       console.error('Error fetching slideshows:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch slideshows')
@@ -923,7 +1114,7 @@ export function useSlideshows() {
     saveSlideOverlays,
     updateSlideBackground,
     updateSlideDuration,
-    renderSlideshow,
+    queueSlideshowRender,
     refetch: fetchSlideshows,
     notice,
     rerenderIds,
