@@ -61,7 +61,7 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds } = useSlideshows();
+  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds, refetch } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -388,6 +388,8 @@ export default function SlideshowEditor() {
       }
     }
   }, [displaySlideshows, selectedSlideshowId]);
+
+
 
   // Track current slide data for auto-save functionality
   useEffect(() => {
@@ -1759,6 +1761,12 @@ export default function SlideshowEditor() {
           completed =>
             setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
         );
+        
+        // Refresh the slideshows data to show the newly rendered video
+        await refetch();
+        
+        // Clear localSlideshows to force using the fresh data from the refetch
+        setLocalSlideshows([]);
       } catch (err) {
         console.error('Failed to render slideshow:', err);
       } finally {
@@ -1835,6 +1843,14 @@ export default function SlideshowEditor() {
               <div className="text-center text-[var(--color-text-muted)]">No videos yet.</div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
+                {Object.entries(renderProgress).map(([id, count]) => {
+                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
+                  return (
+                    <div key={id} className="w-full aspect-square bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
+                      {count}/{total}
+                    </div>
+                  );
+                })}
                 {completedSlideshows.map(slideshow => {
                   const bucket = 'rendered-slides';
                   const first = slideshow.frame_paths?.[0]
@@ -1858,14 +1874,6 @@ export default function SlideshowEditor() {
                         <div className="w-full aspect-square bg-gray-200 rounded-xl" />
                       )}
                     </button>
-                  );
-                })}
-                {Object.entries(renderProgress).map(([id, count]) => {
-                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
-                  return (
-                    <div key={id} className="w-full aspect-square bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
-                      {count}/{total}
-                    </div>
                   );
                 })}
               </div>
