@@ -1834,7 +1834,7 @@ export default function SlideshowEditor() {
             {completedSlideshows.length === 0 && Object.keys(renderProgress).length === 0 ? (
               <div className="text-center text-[var(--color-text-muted)]">No videos yet.</div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {completedSlideshows.map(slideshow => {
                   const bucket = 'rendered-slides';
                   const first = slideshow.frame_paths?.[0]
@@ -1853,9 +1853,9 @@ export default function SlideshowEditor() {
                       }}
                     >
                       {first ? (
-                        <img src={first} className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]" />
+                        <img src={first} className="w-full aspect-square object-cover rounded-xl border border-[var(--color-border)]" />
                       ) : (
-                        <div className="w-full h-24 bg-gray-200 rounded-xl" />
+                        <div className="w-full aspect-square bg-gray-200 rounded-xl" />
                       )}
                     </button>
                   );
@@ -1863,7 +1863,7 @@ export default function SlideshowEditor() {
                 {Object.entries(renderProgress).map(([id, count]) => {
                   const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
                   return (
-                    <div key={id} className="w-full h-24 bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
+                    <div key={id} className="w-full aspect-square bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
                       {count}/{total}
                     </div>
                   );

@@ -66,7 +66,10 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
           <div className="flex items-center gap-2">
             {onDelete && (
               <button
-                onClick={onDelete}
+                onClick={() => {
+                  onDelete();
+                  handleClose();
+                }}
                 className="flex items-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
               >
                 <TrashIcon />
