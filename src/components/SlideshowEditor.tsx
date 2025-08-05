@@ -61,7 +61,24 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, queueSlideshowRender, rerenderIds, clearRerenderIds } = useSlideshows();
+  const {
+    slideshows,
+    loading,
+    error,
+    notice,
+    createSlideshow,
+    addSlide,
+    deleteSlide,
+    deleteSlideshow,
+    saveSlideTexts,
+    saveSlideOverlays,
+    updateSlideBackground,
+    updateSlideDuration,
+    queueSlideshowRender,
+    rerenderIds,
+    clearRerenderIds,
+    refetch
+  } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -86,6 +103,8 @@ export default function SlideshowEditor() {
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewSlideshowId, setPreviewSlideshowId] = useState<string | null>(null);
+  const [isOpeningModal, setIsOpeningModal] = useState(false);
+  const [deletingSlideshowId, setDeletingSlideshowId] = useState<string | null>(null);
 
   const updateModeInUrl = (mode: 'create' | 'drafts') => {
     const params = new URLSearchParams(searchParams.toString());
@@ -389,6 +408,8 @@ export default function SlideshowEditor() {
     }
   }, [displaySlideshows, selectedSlideshowId]);
 
+
+
   // Track current slide data for auto-save functionality
   useEffect(() => {
     if (currentSlide) {
@@ -607,21 +628,42 @@ export default function SlideshowEditor() {
       if (localSlideshows.length === 0) {
         setLocalSlideshows(slideshows);
       } else {
-        // Merge any new slideshows from the hook while preserving local changes
-        const updatedSlideshows = slideshows.map(hookSlideshow => {
-          const localSlideshow = localSlideshows.find(ls => ls.id === hookSlideshow.id);
-          return localSlideshow || hookSlideshow;
-        });
-        
-        // Add any new slideshows that don't exist locally
-        const newSlideshows = slideshows.filter(hs => 
-          !localSlideshows.some(ls => ls.id === hs.id)
+        // Check if any slideshows were deleted from the hook
+        const deletedSlideshows = localSlideshows.filter(ls => 
+          !slideshows.some(hs => hs.id === ls.id)
         );
         
-        if (newSlideshows.length > 0 || updatedSlideshows.length !== localSlideshows.length) {
-          setLocalSlideshows([...updatedSlideshows, ...newSlideshows]);
+        if (deletedSlideshows.length > 0) {
+          // Remove deleted slideshows from local state
+          const remainingSlideshows = localSlideshows.filter(ls => 
+            slideshows.some(hs => hs.id === ls.id)
+          );
+          
+          // Merge with any new slideshows from the hook
+          const newSlideshows = slideshows.filter(hs => 
+            !remainingSlideshows.some(ls => ls.id === hs.id)
+          );
+          
+          setLocalSlideshows([...remainingSlideshows, ...newSlideshows]);
+        } else {
+          // Only add new slideshows if no deletions occurred
+          const newSlideshows = slideshows.filter(hs => 
+            !localSlideshows.some(ls => ls.id === hs.id)
+          );
+          
+          if (newSlideshows.length > 0) {
+            const updatedSlideshows = slideshows.map(hookSlideshow => {
+              const localSlideshow = localSlideshows.find(ls => ls.id === hookSlideshow.id);
+              return localSlideshow || hookSlideshow;
+            });
+            setLocalSlideshows([...updatedSlideshows, ...newSlideshows]);
+          }
         }
       }
+    } else if (slideshows.length === 0 && localSlideshows.length > 0) {
+      // If hook slideshows is empty but local slideshows has data, clear local slideshows
+      // This handles the case where all slideshows are deleted
+      setLocalSlideshows([]);
     }
   }, [slideshows, localSlideshows]);
 
@@ -1714,6 +1756,19 @@ export default function SlideshowEditor() {
   };
 
   const rerendered = useRef<Set<string>>(new Set());
+  
+  // Auto-close modal if the slideshow being previewed gets deleted
+  useEffect(() => {
+    if (isPreviewOpen && previewSlideshowId && deletingSlideshowId === previewSlideshowId) {
+      console.log('Slideshow being previewed was deleted, closing modal');
+      setIsPreviewOpen(false);
+      setPreviewSlideshowId(null);
+      setPreviewImages([]);
+      setIsOpeningModal(false);
+      setDeletingSlideshowId(null);
+    }
+  }, [deletingSlideshowId, isPreviewOpen, previewSlideshowId]);
+  
   useEffect(() => {
     if (rerenderIds.length === 0) return;
     rerenderIds.forEach(id => {
@@ -1759,6 +1814,12 @@ export default function SlideshowEditor() {
         completed =>
           setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
       );
+
+      // Refresh the slideshows data to show the newly rendered video
+      await refetch();
+
+      // Clear localSlideshows to force using the fresh data from the refetch
+      setLocalSlideshows([]);
     } catch (err) {
       console.error('Failed to render slideshow:', err);
     } finally {
@@ -1835,6 +1896,14 @@ export default function SlideshowEditor() {
               <div className="text-center text-[var(--color-text-muted)]">No videos yet.</div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
+                {Object.entries(renderProgress).map(([id, count]) => {
+                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
+                  return (
+                    <div key={id} className="w-full aspect-square bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
+                      {count}/{total}
+                    </div>
+                  );
+                })}
                 {completedSlideshows.map(slideshow => {
                   const bucket = 'rendered-slides';
                   const first = slideshow.frame_paths?.[0]
@@ -1844,12 +1913,33 @@ export default function SlideshowEditor() {
                     <button
                       key={slideshow.id}
                       onClick={() => {
-                        const urls = (slideshow.frame_paths || []).map(p =>
+                        // Prevent rapid clicking
+                        if (isOpeningModal) return;
+                        
+                        // Check if slideshow still exists in current state before opening modal
+                        const currentSlideshow = displaySlideshows.find(s => s.id === slideshow.id);
+                        if (!currentSlideshow) {
+                          console.warn('Slideshow no longer exists, skipping modal open');
+                          return;
+                        }
+                        
+                        // Don't open modal if we're currently deleting a slideshow
+                        if (deletingSlideshowId) {
+                          console.log('Slideshow deletion in progress, skipping modal open');
+                          return;
+                        }
+                        
+                        setIsOpeningModal(true);
+                        
+                        const urls = (currentSlideshow.frame_paths || []).map(p =>
                           supabase.storage.from(bucket).getPublicUrl(p).data.publicUrl
                         );
                         setPreviewImages(urls);
-                        setPreviewSlideshowId(slideshow.id);
+                        setPreviewSlideshowId(currentSlideshow.id);
                         setIsPreviewOpen(true);
+                        
+                        // Reset the flag after a short delay
+                        setTimeout(() => setIsOpeningModal(false), 300);
                       }}
                     >
                       {first ? (
@@ -1858,14 +1948,6 @@ export default function SlideshowEditor() {
                         <div className="w-full aspect-square bg-gray-200 rounded-xl" />
                       )}
                     </button>
-                  );
-                })}
-                {Object.entries(renderProgress).map(([id, count]) => {
-                  const total = displaySlideshows.find(s => s.id === id)?.slides.length || 0;
-                  return (
-                    <div key={id} className="w-full aspect-square bg-gray-200 rounded-xl flex items-center justify-center text-sm text-gray-600 border border-[var(--color-border)]">
-                      {count}/{total}
-                    </div>
                   );
                 })}
               </div>
@@ -2162,17 +2244,33 @@ export default function SlideshowEditor() {
           setIsPreviewOpen(false);
           setPreviewSlideshowId(null);
           setPreviewImages([]);
+          setIsOpeningModal(false);
+          setDeletingSlideshowId(null);
         }}
         imageUrls={previewImages}
         title="Video Preview"
         onDelete={async () => {
           if (!previewSlideshowId) return;
-          try {
-            await deleteSlideshow(previewSlideshowId);
-          } finally {
+          
+          // Check if slideshow still exists before attempting deletion
+          const slideshowExists = displaySlideshows.find(s => s.id === previewSlideshowId);
+          if (!slideshowExists) {
+            console.warn('Slideshow no longer exists, closing modal without deletion');
             setIsPreviewOpen(false);
             setPreviewSlideshowId(null);
             setPreviewImages([]);
+            setIsOpeningModal(false);
+            return;
+          }
+          
+          // Set the deleting slideshow ID to track which slideshow is being deleted
+          setDeletingSlideshowId(previewSlideshowId);
+          
+          try {
+            await deleteSlideshow(previewSlideshowId);
+          } finally {
+            // Don't close the modal here - let the useEffect handle it
+            // This prevents race conditions when opening new modals
           }
         }}
       />
