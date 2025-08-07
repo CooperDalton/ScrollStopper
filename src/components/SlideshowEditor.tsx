@@ -621,7 +621,9 @@ export default function SlideshowEditor() {
     };
   }, []);
 
-  // Sync local slideshows with hook slideshows when they change (preserve local edits, avoid duplicates)
+  // Sync local slideshows with hook slideshows when they change
+  // Prefer hook updates for status/frame_paths so My Videos updates without full refresh
+  // Preserve local slides array to keep unsaved editor changes
   useEffect(() => {
     if (slideshows.length === 0) {
       if (localSlideshows.length > 0) setLocalSlideshows([]);
@@ -630,9 +632,20 @@ export default function SlideshowEditor() {
 
     setLocalSlideshows(prev => {
       const localById = new Map(prev.map(s => [s.id, s] as const));
-      // Use hook order, but substitute any locally edited slideshow by id
-      const merged = slideshows.map(hookS => localById.get(hookS.id) ?? hookS);
-      return merged;
+      return slideshows.map(hookS => {
+        const local = localById.get(hookS.id);
+        if (!local) return hookS;
+        return {
+          ...local,
+          status: hookS.status,
+          frame_paths: hookS.frame_paths,
+          date_modified: hookS.date_modified,
+          upload_status: hookS.upload_status,
+          caption: hookS.caption,
+          aspect_ratio: hookS.aspect_ratio,
+          slides: local.slides && local.slides.length > 0 ? local.slides : hookS.slides
+        } as Slideshow;
+      });
     });
   }, [slideshows]);
 

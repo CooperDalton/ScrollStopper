@@ -59,7 +59,7 @@ export interface Slideshow {
 interface RenderQueueItem {
   id: string;
   getSlideCanvas: (slideId: string) => Promise<fabric.Canvas | undefined>;
-  onProgress?: (completed: number, total: number) => void;
+  slideshow?: Slideshow;
   resolve?: () => void;
   reject?: (err: unknown) => void;
 }
@@ -195,6 +195,9 @@ export function useSlideshows() {
   const pendingIdsRef = useRef<Set<string>>(new Set())
   const inFlightIdRef = useRef<string | null>(null)
   const idToPromiseRef = useRef<Map<string, Promise<void>>>(new Map())
+  const idToProgressListenersRef = useRef<
+    Map<string, Set<(completed: number, total: number) => void>>
+  >(new Map())
 
   const processRenderQueue = async () => {
     if (processingQueue.current) return
@@ -205,7 +208,15 @@ export function useSlideshows() {
         // Mark in-flight and remove from pending set
         inFlightIdRef.current = item.id
         pendingIdsRef.current.delete(item.id)
-        await renderSlideshow(item.id, item.getSlideCanvas, item.onProgress)
+        const progressFanout = (completed: number, total: number) => {
+          const listeners = idToProgressListenersRef.current.get(item.id)
+          if (listeners && listeners.size > 0) {
+            listeners.forEach(fn => {
+              try { fn(completed, total) } catch (_) { /* noop */ }
+            })
+          }
+        }
+        await renderSlideshow(item.id, item.getSlideCanvas, progressFanout, item.slideshow)
         item.resolve?.()
       } catch (err) {
         item.reject?.(err)
@@ -213,6 +224,7 @@ export function useSlideshows() {
       // Clear in-flight and complete promise map entry for this id
       inFlightIdRef.current = null
       idToPromiseRef.current.delete(item.id)
+      idToProgressListenersRef.current.delete(item.id)
     }
     processingQueue.current = false
   }
@@ -220,15 +232,27 @@ export function useSlideshows() {
   const queueSlideshowRender = async (
     slideshowId: string,
     getSlideCanvas?: (slideId: string) => Promise<fabric.Canvas | undefined>,
-    onProgress?: (completed: number, total: number) => void
+    onProgress?: (completed: number, total: number) => void,
+    slideshow?: Slideshow
   ) => {
     if (!user) throw new Error('User must be authenticated to render slideshows')
 
     let getCanvas = getSlideCanvas
+    let slideshowForJob: Slideshow | undefined = slideshow
     if (!getCanvas) {
-      const slideshow = slideshows.find(s => s.id === slideshowId)
-      if (!slideshow) throw new Error('Slideshow not found')
-      getCanvas = createGetSlideCanvas(slideshow)
+      const s = slideshowForJob || slideshows.find(s => s.id === slideshowId)
+      // Don't throw here — allow deferred resolution after fetch
+      if (s) {
+        slideshowForJob = s
+        getCanvas = createGetSlideCanvas(s)
+      }
+    }
+
+    // Register progress listener if provided
+    if (onProgress) {
+      const set = idToProgressListenersRef.current.get(slideshowId) || new Set()
+      set.add(onProgress)
+      idToProgressListenersRef.current.set(slideshowId, set)
     }
 
     // If already queued or currently in-flight, return existing promise
@@ -255,8 +279,8 @@ export function useSlideshows() {
     const jobPromise = new Promise<void>((resolve, reject) => {
       renderQueue.current.push({
         id: slideshowId,
-        getSlideCanvas: getCanvas!,
-        onProgress,
+        getSlideCanvas: getCanvas || (async () => undefined),
+        slideshow: slideshowForJob,
         resolve,
         reject
       })
@@ -366,6 +390,7 @@ export function useSlideshows() {
 
       // Find slideshows left in rendering state and prepare them for restart
       const interruptedIds: string[] = []
+      const queuedIds: string[] = []
       for (const s of transformedSlideshows) {
         if (s.status === 'rendering') {
           const bucket = 'rendered-slides'
@@ -395,33 +420,21 @@ export function useSlideshows() {
             s.frame_paths = []
           }
           interruptedIds.push(s.id)
+        } else if (s.status === 'queued') {
+          queuedIds.push(s.id)
         }
       }
 
-      if (interruptedIds.length > 0) {
-        setNotice('Render was interrupted. Restarting render.')
-        setRerenderIds(interruptedIds)
+      // Update slideshows first so UI can find items in rerenderIds
+      setSlideshows(transformedSlideshows)
+
+      const resumeIds = Array.from(new Set([...interruptedIds, ...queuedIds]))
+      if (resumeIds.length > 0) {
+        setNotice('Resuming render...')
+        setRerenderIds(resumeIds)
       } else {
         setRerenderIds([])
       }
-
-      setSlideshows(transformedSlideshows)
-
-      // Resume any slideshows still queued
-      transformedSlideshows
-        .filter(s => s.status === 'queued')
-        .forEach(s => {
-          // Avoid duplicate enqueue if already pending or in-flight
-          if (
-            !pendingIdsRef.current.has(s.id) &&
-            inFlightIdRef.current !== s.id &&
-            !idToPromiseRef.current.has(s.id)
-          ) {
-            queueSlideshowRender(s.id, createGetSlideCanvas(s)).catch(err =>
-              console.error('Failed to queue slideshow render:', err)
-            )
-          }
-        })
     } catch (err) {
       console.error('Error fetching slideshows:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch slideshows')
@@ -1029,14 +1042,91 @@ export function useSlideshows() {
   const renderSlideshow = async (
     slideshowId: string,
     getSlideCanvas: (slideId: string) => fabric.Canvas | undefined | Promise<fabric.Canvas | undefined>,
-    onProgress?: (completed: number, total: number) => void
+    onProgress?: (completed: number, total: number) => void,
+    fallbackSlideshow?: Slideshow
   ) => {
     if (!user) {
       throw new Error('User must be authenticated to render slideshows')
     }
 
-    const slideshow = slideshows.find(s => s.id === slideshowId)
-    if (!slideshow) throw new Error('Slideshow not found')
+    let slideshow = slideshows.find(s => s.id === slideshowId) || fallbackSlideshow
+    if (!slideshow) {
+      // Fallback: fetch slideshow (and slides) directly from DB if not in memory
+      const { data, error } = await supabase
+        .from('slideshows')
+        .select(`
+          id,
+          user_id,
+          product_id,
+          caption,
+          status,
+          upload_status,
+          tik_tok_post_id,
+          frame_paths,
+          date_modified,
+          aspect_ratio,
+          created_at,
+          slides (
+            id,
+            slideshow_id,
+            background_image_id,
+            duration_seconds,
+            index,
+            created_at,
+            background_image:images!background_image_id (
+              id,
+              file_path
+            ),
+            slide_texts (
+              id,
+              slide_id,
+              text,
+              position_x,
+              position_y,
+              size,
+              rotation,
+              font,
+              created_at
+            ),
+            slide_overlays (
+              id,
+              slide_id,
+              image_id,
+              crop,
+              position_x,
+              position_y,
+              rotation,
+              size,
+              created_at,
+              overlay_image:images!image_id (
+                id,
+                file_path
+              )
+            )
+          )
+        `)
+        .eq('id', slideshowId)
+        .single()
+
+      if (error || !data) {
+        throw new Error('Slideshow not found')
+      }
+
+      slideshow = {
+        ...data,
+        slides: (data.slides || [])
+          .sort((a: any, b: any) => (a.index || 0) - (b.index || 0))
+          .map((slide: any) => ({
+            ...slide,
+            texts: slide.slide_texts || [],
+            overlays: (slide.slide_overlays || []).map((overlay: any) => ({
+              ...overlay,
+              imageUrl: overlay.overlay_image?.file_path ? getImageUrl(overlay.overlay_image.file_path) : undefined
+            })),
+            backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
+          }))
+      } as Slideshow
+    }
 
     const total = slideshow.slides.length
 
