@@ -621,51 +621,20 @@ export default function SlideshowEditor() {
     };
   }, []);
 
-  // Sync local slideshows with hook slideshows when they change
+  // Sync local slideshows with hook slideshows when they change (preserve local edits, avoid duplicates)
   useEffect(() => {
-    if (slideshows.length > 0) {
-      // If local slideshows is empty, initialize with hook data
-      if (localSlideshows.length === 0) {
-        setLocalSlideshows(slideshows);
-      } else {
-        // Check if any slideshows were deleted from the hook
-        const deletedSlideshows = localSlideshows.filter(ls => 
-          !slideshows.some(hs => hs.id === ls.id)
-        );
-        
-        if (deletedSlideshows.length > 0) {
-          // Remove deleted slideshows from local state
-          const remainingSlideshows = localSlideshows.filter(ls => 
-            slideshows.some(hs => hs.id === ls.id)
-          );
-          
-          // Merge with any new slideshows from the hook
-          const newSlideshows = slideshows.filter(hs => 
-            !remainingSlideshows.some(ls => ls.id === hs.id)
-          );
-          
-          setLocalSlideshows([...remainingSlideshows, ...newSlideshows]);
-        } else {
-          // Only add new slideshows if no deletions occurred
-          const newSlideshows = slideshows.filter(hs => 
-            !localSlideshows.some(ls => ls.id === hs.id)
-          );
-          
-          if (newSlideshows.length > 0) {
-            const updatedSlideshows = slideshows.map(hookSlideshow => {
-              const localSlideshow = localSlideshows.find(ls => ls.id === hookSlideshow.id);
-              return localSlideshow || hookSlideshow;
-            });
-            setLocalSlideshows([...updatedSlideshows, ...newSlideshows]);
-          }
-        }
-      }
-    } else if (slideshows.length === 0 && localSlideshows.length > 0) {
-      // If hook slideshows is empty but local slideshows has data, clear local slideshows
-      // This handles the case where all slideshows are deleted
-      setLocalSlideshows([]);
+    if (slideshows.length === 0) {
+      if (localSlideshows.length > 0) setLocalSlideshows([]);
+      return;
     }
-  }, [slideshows, localSlideshows]);
+
+    setLocalSlideshows(prev => {
+      const localById = new Map(prev.map(s => [s.id, s] as const));
+      // Use hook order, but substitute any locally edited slideshow by id
+      const merged = slideshows.map(hookS => localById.get(hookS.id) ?? hookS);
+      return merged;
+    });
+  }, [slideshows]);
 
   // Cleanup canvas references when slideshows change to prevent stale references
   useEffect(() => {

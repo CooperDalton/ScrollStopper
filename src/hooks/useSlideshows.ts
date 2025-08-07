@@ -191,6 +191,10 @@ export function useSlideshows() {
 
   const renderQueue = useRef<RenderQueueItem[]>([])
   const processingQueue = useRef(false)
+  // Deduplication and in-flight tracking for queue items
+  const pendingIdsRef = useRef<Set<string>>(new Set())
+  const inFlightIdRef = useRef<string | null>(null)
+  const idToPromiseRef = useRef<Map<string, Promise<void>>>(new Map())
 
   const processRenderQueue = async () => {
     if (processingQueue.current) return
@@ -198,11 +202,17 @@ export function useSlideshows() {
     while (renderQueue.current.length > 0) {
       const item = renderQueue.current.shift()!
       try {
+        // Mark in-flight and remove from pending set
+        inFlightIdRef.current = item.id
+        pendingIdsRef.current.delete(item.id)
         await renderSlideshow(item.id, item.getSlideCanvas, item.onProgress)
         item.resolve?.()
       } catch (err) {
         item.reject?.(err)
       }
+      // Clear in-flight and complete promise map entry for this id
+      inFlightIdRef.current = null
+      idToPromiseRef.current.delete(item.id)
     }
     processingQueue.current = false
   }
@@ -221,20 +231,28 @@ export function useSlideshows() {
       getCanvas = createGetSlideCanvas(slideshow)
     }
 
-    const { error: statusError } = await supabase
+    // If already queued or currently in-flight, return existing promise
+    const existing = idToPromiseRef.current.get(slideshowId)
+    if (existing) return existing
+    if (pendingIdsRef.current.has(slideshowId) || inFlightIdRef.current === slideshowId) {
+      const reuse = idToPromiseRef.current.get(slideshowId)
+      if (reuse) return reuse
+    }
+
+    // Set status to queued only when enqueuing a new job
+    const statusUpdate = supabase
       .from('slideshows')
       .update({ status: 'queued' })
       .eq('id', slideshowId)
-    if (statusError) {
-      console.error('Failed to set slideshow status to queued:', statusError)
-      throw statusError
-    }
+    const statusPromise = statusUpdate.then(({ error }) => {
+      if (error) {
+        console.error('Failed to set slideshow status to queued:', error)
+        throw error
+      }
+      setSlideshows(prev => prev.map(s => (s.id === slideshowId ? { ...s, status: 'queued' } : s)))
+    })
 
-    setSlideshows(prev =>
-      prev.map(s => (s.id === slideshowId ? { ...s, status: 'queued' } : s))
-    )
-
-    return new Promise<void>((resolve, reject) => {
+    const jobPromise = new Promise<void>((resolve, reject) => {
       renderQueue.current.push({
         id: slideshowId,
         getSlideCanvas: getCanvas!,
@@ -242,8 +260,21 @@ export function useSlideshows() {
         resolve,
         reject
       })
-      processRenderQueue()
+      pendingIdsRef.current.add(slideshowId)
+      // Ensure DB status is set before processing begins
+      statusPromise.then(
+        () => {
+          processRenderQueue()
+        },
+        (err) => {
+          reject(err)
+          processRenderQueue()
+        }
+      )
     })
+
+    idToPromiseRef.current.set(slideshowId, jobPromise)
+    return jobPromise
   }
 
   const fetchSlideshows = async () => {
@@ -380,9 +411,16 @@ export function useSlideshows() {
       transformedSlideshows
         .filter(s => s.status === 'queued')
         .forEach(s => {
-          queueSlideshowRender(s.id, createGetSlideCanvas(s)).catch(err =>
-            console.error('Failed to queue slideshow render:', err)
-          )
+          // Avoid duplicate enqueue if already pending or in-flight
+          if (
+            !pendingIdsRef.current.has(s.id) &&
+            inFlightIdRef.current !== s.id &&
+            !idToPromiseRef.current.has(s.id)
+          ) {
+            queueSlideshowRender(s.id, createGetSlideCanvas(s)).catch(err =>
+              console.error('Failed to queue slideshow render:', err)
+            )
+          }
         })
     } catch (err) {
       console.error('Error fetching slideshows:', err)
