@@ -10,14 +10,22 @@ CREATE TABLE public.image_collections (
   CONSTRAINT image_collections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.images (
+  metadata jsonb NOT NULL,
+  search_tsv tsvector,
+  categories ARRAY,
+  objects ARRAY,
+  mime_type text,
+  bytes bigint,
+  width integer,
+  height integer,
+  aspect_ratio text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
+  user_id uuid NOT NULL,
+  storage_path text NOT NULL,
   collection_id uuid,
-  file_path text,
-  ai_description text,
-  ai_summary text,
-  ai_json jsonb,
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT images_pkey PRIMARY KEY (id),
+  CONSTRAINT images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT images_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.image_collections(id)
 );
 CREATE TABLE public.products (
@@ -32,7 +40,6 @@ CREATE TABLE public.products (
 CREATE TABLE public.slide_overlays (
   slide_id uuid,
   image_id uuid,
-  crop jsonb,
   position_x integer,
   position_y integer,
   rotation integer,
