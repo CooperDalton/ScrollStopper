@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
-import type * as fabric from 'fabric'
+import * as fabric from 'fabric'
 
 export interface SlideText {
   id: string;
@@ -56,6 +56,131 @@ export interface Slideshow {
   slides: Slide[];
 }
 
+interface RenderQueueItem {
+  id: string;
+  getSlideCanvas: (slideId: string) => Promise<fabric.Canvas | undefined>;
+  slideshow?: Slideshow;
+  resolve?: () => void;
+  reject?: (err: unknown) => void;
+}
+
+const parseAspectRatio = (ratio: string) => {
+  const [w, h] = ratio.split(':').map(Number)
+  return w && h ? w / h : 9 / 16
+}
+
+const getTextStyling = (fontSize: number = 24) => ({
+  fontFamily: '"proxima-nova", sans-serif',
+  fontWeight: '600',
+  fontStyle: 'normal',
+  fill: '#ffffff',
+  textAlign: 'center' as const,
+  originX: 'center' as const,
+  originY: 'center' as const,
+  stroke: 'black',
+  charSpacing: -40,
+  lineHeight: 1.0
+})
+
+const scaleImageToFillCanvas = (
+  img: fabric.Image,
+  canvasWidth: number,
+  canvasHeight: number
+) => {
+  const imgWidth = img.width || 1
+  const imgHeight = img.height || 1
+
+  const scaleX = canvasWidth / imgWidth
+  const scaleY = canvasHeight / imgHeight
+  const scale = Math.max(scaleX, scaleY)
+
+  img.set({
+    scaleX: scale,
+    scaleY: scale
+  })
+
+  const scaledWidth = imgWidth * scale
+  const scaledHeight = imgHeight * scale
+  img.set({
+    left: (canvasWidth - scaledWidth) / 2,
+    top: (canvasHeight - scaledHeight) / 2,
+    originX: 'left',
+    originY: 'top'
+  })
+}
+
+const createGetSlideCanvas = (slideshow: Slideshow) => async (
+  slideId: string
+): Promise<fabric.Canvas | undefined> => {
+  const aspectRatio = parseAspectRatio(slideshow.aspect_ratio)
+  const CANVAS_WIDTH = 300
+  const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio)
+
+  const tempCanvasEl = document.createElement('canvas')
+  tempCanvasEl.width = CANVAS_WIDTH
+  tempCanvasEl.height = CANVAS_HEIGHT
+
+  try {
+    const canvas = new fabric.Canvas(tempCanvasEl, {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      backgroundColor: '#ffffff'
+    })
+
+    const slide = slideshow.slides.find(s => s.id === slideId)
+    if (!slide) return undefined
+
+    if (slide.backgroundImage) {
+      const img = await fabric.Image.fromURL(slide.backgroundImage, {
+        crossOrigin: 'anonymous'
+      })
+      img.set({ selectable: false, evented: false, isBackground: true })
+      scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT)
+      canvas.add(img)
+    }
+
+    if (slide.texts) {
+      for (const textData of slide.texts) {
+        const fabricText = new fabric.IText(textData.text, {
+          ...getTextStyling(textData.size),
+          left: textData.position_x,
+          top: textData.position_y,
+          fontSize: textData.size,
+          angle: textData.rotation,
+          textId: textData.id
+        })
+        canvas.add(fabricText)
+      }
+    }
+
+    if (slide.overlays) {
+      for (const overlayData of slide.overlays) {
+        if (overlayData.imageUrl) {
+          const img = await fabric.Image.fromURL(overlayData.imageUrl, {
+            crossOrigin: 'anonymous'
+          })
+          img.set({
+            left: overlayData.position_x,
+            top: overlayData.position_y,
+            scaleX: overlayData.size / 100,
+            scaleY: overlayData.size / 100,
+            angle: overlayData.rotation,
+            selectable: false,
+            evented: false
+          })
+          canvas.add(img)
+        }
+      }
+    }
+
+    canvas.renderAll()
+    return canvas
+  } catch (err) {
+    console.error('Failed to create temporary canvas:', err)
+    return undefined
+  }
+}
+
 export function useSlideshows() {
   const [slideshows, setSlideshows] = useState<Slideshow[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,6 +188,118 @@ export function useSlideshows() {
   const [notice, setNotice] = useState<string | null>(null)
   const [rerenderIds, setRerenderIds] = useState<string[]>([])
   const { user } = useAuth()
+
+  const renderQueue = useRef<RenderQueueItem[]>([])
+  const processingQueue = useRef(false)
+  // Deduplication and in-flight tracking for queue items
+  const pendingIdsRef = useRef<Set<string>>(new Set())
+  const inFlightIdRef = useRef<string | null>(null)
+  const idToPromiseRef = useRef<Map<string, Promise<void>>>(new Map())
+  const idToProgressListenersRef = useRef<
+    Map<string, Set<(completed: number, total: number) => void>>
+  >(new Map())
+
+  const processRenderQueue = async () => {
+    if (processingQueue.current) return
+    processingQueue.current = true
+    while (renderQueue.current.length > 0) {
+      const item = renderQueue.current.shift()!
+      try {
+        // Mark in-flight and remove from pending set
+        inFlightIdRef.current = item.id
+        pendingIdsRef.current.delete(item.id)
+        const progressFanout = (completed: number, total: number) => {
+          const listeners = idToProgressListenersRef.current.get(item.id)
+          if (listeners && listeners.size > 0) {
+            listeners.forEach(fn => {
+              try { fn(completed, total) } catch (_) { /* noop */ }
+            })
+          }
+        }
+        await renderSlideshow(item.id, item.getSlideCanvas, progressFanout, item.slideshow)
+        item.resolve?.()
+      } catch (err) {
+        item.reject?.(err)
+      }
+      // Clear in-flight and complete promise map entry for this id
+      inFlightIdRef.current = null
+      idToPromiseRef.current.delete(item.id)
+      idToProgressListenersRef.current.delete(item.id)
+    }
+    processingQueue.current = false
+  }
+
+  const queueSlideshowRender = async (
+    slideshowId: string,
+    getSlideCanvas?: (slideId: string) => Promise<fabric.Canvas | undefined>,
+    onProgress?: (completed: number, total: number) => void,
+    slideshow?: Slideshow
+  ) => {
+    if (!user) throw new Error('User must be authenticated to render slideshows')
+
+    let getCanvas = getSlideCanvas
+    let slideshowForJob: Slideshow | undefined = slideshow
+    if (!getCanvas) {
+      const s = slideshowForJob || slideshows.find(s => s.id === slideshowId)
+      // Don't throw here — allow deferred resolution after fetch
+      if (s) {
+        slideshowForJob = s
+        getCanvas = createGetSlideCanvas(s)
+      }
+    }
+
+    // Register progress listener if provided
+    if (onProgress) {
+      const set = idToProgressListenersRef.current.get(slideshowId) || new Set()
+      set.add(onProgress)
+      idToProgressListenersRef.current.set(slideshowId, set)
+    }
+
+    // If already queued or currently in-flight, return existing promise
+    const existing = idToPromiseRef.current.get(slideshowId)
+    if (existing) return existing
+    if (pendingIdsRef.current.has(slideshowId) || inFlightIdRef.current === slideshowId) {
+      const reuse = idToPromiseRef.current.get(slideshowId)
+      if (reuse) return reuse
+    }
+
+    // Set status to queued only when enqueuing a new job
+    const statusUpdate = supabase
+      .from('slideshows')
+      .update({ status: 'queued' })
+      .eq('id', slideshowId)
+    const statusPromise = statusUpdate.then(({ error }) => {
+      if (error) {
+        console.error('Failed to set slideshow status to queued:', error)
+        throw error
+      }
+      setSlideshows(prev => prev.map(s => (s.id === slideshowId ? { ...s, status: 'queued' } : s)))
+    })
+
+    const jobPromise = new Promise<void>((resolve, reject) => {
+      renderQueue.current.push({
+        id: slideshowId,
+        getSlideCanvas: getCanvas || (async () => undefined),
+        slideshow: slideshowForJob,
+        resolve,
+        reject
+      })
+      pendingIdsRef.current.add(slideshowId)
+      // Ensure DB status is set before processing begins
+      statusPromise.then(
+        () => {
+          processRenderQueue()
+        },
+        (err) => {
+          reject(err)
+          processRenderQueue()
+        }
+      )
+    })
+
+    idToPromiseRef.current.set(slideshowId, jobPromise)
+    return jobPromise
+  }
 
   const fetchSlideshows = async () => {
     if (!user) {
@@ -153,6 +390,7 @@ export function useSlideshows() {
 
       // Find slideshows left in rendering state and prepare them for restart
       const interruptedIds: string[] = []
+      const queuedIds: string[] = []
       for (const s of transformedSlideshows) {
         if (s.status === 'rendering') {
           const bucket = 'rendered-slides'
@@ -182,17 +420,21 @@ export function useSlideshows() {
             s.frame_paths = []
           }
           interruptedIds.push(s.id)
+        } else if (s.status === 'queued') {
+          queuedIds.push(s.id)
         }
       }
 
-      if (interruptedIds.length > 0) {
-        setNotice('Render was interrupted. Restarting render.')
-        setRerenderIds(interruptedIds)
+      // Update slideshows first so UI can find items in rerenderIds
+      setSlideshows(transformedSlideshows)
+
+      const resumeIds = Array.from(new Set([...interruptedIds, ...queuedIds]))
+      if (resumeIds.length > 0) {
+        setNotice('Resuming render...')
+        setRerenderIds(resumeIds)
       } else {
         setRerenderIds([])
       }
-
-      setSlideshows(transformedSlideshows)
     } catch (err) {
       console.error('Error fetching slideshows:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch slideshows')
@@ -800,14 +1042,91 @@ export function useSlideshows() {
   const renderSlideshow = async (
     slideshowId: string,
     getSlideCanvas: (slideId: string) => fabric.Canvas | undefined | Promise<fabric.Canvas | undefined>,
-    onProgress?: (completed: number, total: number) => void
+    onProgress?: (completed: number, total: number) => void,
+    fallbackSlideshow?: Slideshow
   ) => {
     if (!user) {
       throw new Error('User must be authenticated to render slideshows')
     }
 
-    const slideshow = slideshows.find(s => s.id === slideshowId)
-    if (!slideshow) throw new Error('Slideshow not found')
+    let slideshow = slideshows.find(s => s.id === slideshowId) || fallbackSlideshow
+    if (!slideshow) {
+      // Fallback: fetch slideshow (and slides) directly from DB if not in memory
+      const { data, error } = await supabase
+        .from('slideshows')
+        .select(`
+          id,
+          user_id,
+          product_id,
+          caption,
+          status,
+          upload_status,
+          tik_tok_post_id,
+          frame_paths,
+          date_modified,
+          aspect_ratio,
+          created_at,
+          slides (
+            id,
+            slideshow_id,
+            background_image_id,
+            duration_seconds,
+            index,
+            created_at,
+            background_image:images!background_image_id (
+              id,
+              file_path
+            ),
+            slide_texts (
+              id,
+              slide_id,
+              text,
+              position_x,
+              position_y,
+              size,
+              rotation,
+              font,
+              created_at
+            ),
+            slide_overlays (
+              id,
+              slide_id,
+              image_id,
+              crop,
+              position_x,
+              position_y,
+              rotation,
+              size,
+              created_at,
+              overlay_image:images!image_id (
+                id,
+                file_path
+              )
+            )
+          )
+        `)
+        .eq('id', slideshowId)
+        .single()
+
+      if (error || !data) {
+        throw new Error('Slideshow not found')
+      }
+
+      slideshow = {
+        ...data,
+        slides: (data.slides || [])
+          .sort((a: any, b: any) => (a.index || 0) - (b.index || 0))
+          .map((slide: any) => ({
+            ...slide,
+            texts: slide.slide_texts || [],
+            overlays: (slide.slide_overlays || []).map((overlay: any) => ({
+              ...overlay,
+              imageUrl: overlay.overlay_image?.file_path ? getImageUrl(overlay.overlay_image.file_path) : undefined
+            })),
+            backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
+          }))
+      } as Slideshow
+    }
 
     const total = slideshow.slides.length
 
@@ -923,7 +1242,7 @@ export function useSlideshows() {
     saveSlideOverlays,
     updateSlideBackground,
     updateSlideDuration,
-    renderSlideshow,
+    queueSlideshowRender,
     refetch: fetchSlideshows,
     notice,
     rerenderIds,

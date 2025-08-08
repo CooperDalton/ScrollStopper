@@ -61,7 +61,24 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
-  const { slideshows, loading, error, notice, createSlideshow, addSlide, deleteSlide, deleteSlideshow, saveSlideTexts, saveSlideOverlays, updateSlideBackground, updateSlideDuration, renderSlideshow, rerenderIds, clearRerenderIds, refetch } = useSlideshows();
+  const {
+    slideshows,
+    loading,
+    error,
+    notice,
+    createSlideshow,
+    addSlide,
+    deleteSlide,
+    deleteSlideshow,
+    saveSlideTexts,
+    saveSlideOverlays,
+    updateSlideBackground,
+    updateSlideDuration,
+    queueSlideshowRender,
+    rerenderIds,
+    clearRerenderIds,
+    refetch
+  } = useSlideshows();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -605,50 +622,32 @@ export default function SlideshowEditor() {
   }, []);
 
   // Sync local slideshows with hook slideshows when they change
+  // Prefer hook updates for status/frame_paths so My Videos updates without full refresh
+  // Preserve local slides array to keep unsaved editor changes
   useEffect(() => {
-    if (slideshows.length > 0) {
-      // If local slideshows is empty, initialize with hook data
-      if (localSlideshows.length === 0) {
-        setLocalSlideshows(slideshows);
-      } else {
-        // Check if any slideshows were deleted from the hook
-        const deletedSlideshows = localSlideshows.filter(ls => 
-          !slideshows.some(hs => hs.id === ls.id)
-        );
-        
-        if (deletedSlideshows.length > 0) {
-          // Remove deleted slideshows from local state
-          const remainingSlideshows = localSlideshows.filter(ls => 
-            slideshows.some(hs => hs.id === ls.id)
-          );
-          
-          // Merge with any new slideshows from the hook
-          const newSlideshows = slideshows.filter(hs => 
-            !remainingSlideshows.some(ls => ls.id === hs.id)
-          );
-          
-          setLocalSlideshows([...remainingSlideshows, ...newSlideshows]);
-        } else {
-          // Only add new slideshows if no deletions occurred
-          const newSlideshows = slideshows.filter(hs => 
-            !localSlideshows.some(ls => ls.id === hs.id)
-          );
-          
-          if (newSlideshows.length > 0) {
-            const updatedSlideshows = slideshows.map(hookSlideshow => {
-              const localSlideshow = localSlideshows.find(ls => ls.id === hookSlideshow.id);
-              return localSlideshow || hookSlideshow;
-            });
-            setLocalSlideshows([...updatedSlideshows, ...newSlideshows]);
-          }
-        }
-      }
-    } else if (slideshows.length === 0 && localSlideshows.length > 0) {
-      // If hook slideshows is empty but local slideshows has data, clear local slideshows
-      // This handles the case where all slideshows are deleted
-      setLocalSlideshows([]);
+    if (slideshows.length === 0) {
+      if (localSlideshows.length > 0) setLocalSlideshows([]);
+      return;
     }
-  }, [slideshows, localSlideshows]);
+
+    setLocalSlideshows(prev => {
+      const localById = new Map(prev.map(s => [s.id, s] as const));
+      return slideshows.map(hookS => {
+        const local = localById.get(hookS.id);
+        if (!local) return hookS;
+        return {
+          ...local,
+          status: hookS.status,
+          frame_paths: hookS.frame_paths,
+          date_modified: hookS.date_modified,
+          upload_status: hookS.upload_status,
+          caption: hookS.caption,
+          aspect_ratio: hookS.aspect_ratio,
+          slides: local.slides && local.slides.length > 0 ? local.slides : hookS.slides
+        } as Slideshow;
+      });
+    });
+  }, [slideshows]);
 
   // Cleanup canvas references when slideshows change to prevent stale references
   useEffect(() => {
@@ -1763,7 +1762,7 @@ export default function SlideshowEditor() {
         setRenderProgress(prev => ({ ...prev, [id]: 0 }));
         try {
           const getSlideCanvas = createGetSlideCanvas(slideshow);
-          await renderSlideshow(
+          await queueSlideshowRender(
             id,
             getSlideCanvas,
             completed =>
@@ -1782,37 +1781,37 @@ export default function SlideshowEditor() {
       run();
     });
     clearRerenderIds();
-  }, [rerenderIds, slideshows, renderSlideshow, clearRerenderIds, createGetSlideCanvas]);
+  }, [rerenderIds, slideshows, queueSlideshowRender, clearRerenderIds, createGetSlideCanvas]);
 
-    const handleRender = async () => {
-      if (!currentSlideshow) return;
-      setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+  const handleRender = async () => {
+    if (!currentSlideshow) return;
+    setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
 
-      try {
-        const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
+    try {
+      const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
 
-        await renderSlideshow(
-          currentSlideshow.id,
-          getSlideCanvasForRender,
-          completed =>
-            setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
-        );
-        
-        // Refresh the slideshows data to show the newly rendered video
-        await refetch();
-        
-        // Clear localSlideshows to force using the fresh data from the refetch
-        setLocalSlideshows([]);
-      } catch (err) {
-        console.error('Failed to render slideshow:', err);
-      } finally {
-        setRenderProgress(prev => {
-          const updated = { ...prev };
-          delete updated[currentSlideshow.id];
-          return updated;
-        });
-      }
-    };
+      await queueSlideshowRender(
+        currentSlideshow.id,
+        getSlideCanvasForRender,
+        completed =>
+          setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+      );
+
+      // Refresh the slideshows data to show the newly rendered video
+      await refetch();
+
+      // Clear localSlideshows to force using the fresh data from the refetch
+      setLocalSlideshows([]);
+    } catch (err) {
+      console.error('Failed to render slideshow:', err);
+    } finally {
+      setRenderProgress(prev => {
+        const updated = { ...prev };
+        delete updated[currentSlideshow.id];
+        return updated;
+      });
+    }
+  };
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
