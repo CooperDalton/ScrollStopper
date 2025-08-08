@@ -9,9 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^1.0.4",
+    "@ai-sdk/openai": "^2.0.6",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.52.0",
-    "@types/fabric": "^5.3.10",
     "fabric": "^5.5.2",
     "next": "^15.3.5",
     "react": "^19.0.0",
