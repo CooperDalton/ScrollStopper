@@ -265,7 +265,8 @@ export default function SlideshowEditor() {
   };
 
   // Helper to load Fabric image with a Promise, compatible with callback-based API
-  const loadFabricImage = (url: string, options?: fabric.IImageOptions): Promise<fabric.Image> => {
+  type ImageFromUrlOptions = { crossOrigin?: string };
+  const loadFabricImage = (url: string, options?: ImageFromUrlOptions): Promise<fabric.Image> => {
     return new Promise((resolve, reject) => {
       try {
         fabric.Image.fromURL(
@@ -274,7 +275,7 @@ export default function SlideshowEditor() {
             if (img) resolve(img);
             else reject(new Error('Failed to load image'));
           },
-          options || { crossOrigin: 'anonymous' }
+          (options as any) || { crossOrigin: 'anonymous' }
         );
       } catch (err) {
         reject(err);
