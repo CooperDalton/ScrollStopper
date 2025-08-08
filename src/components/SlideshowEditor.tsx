@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import * as fabric from 'fabric';
+import { fabric } from 'fabric';
 import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
@@ -99,6 +99,7 @@ export default function SlideshowEditor() {
     const mode = searchParams.get('mode');
     return mode === 'drafts' ? 'drafts' : 'create';
   });
+  const modeParam = searchParams.get('mode');
   const [renderProgress, setRenderProgress] = useState<{[key:string]: number}>({});
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -118,11 +119,10 @@ export default function SlideshowEditor() {
   };
 
   useEffect(() => {
-    const mode = searchParams.get('mode');
-    if (mode === 'drafts' || mode === 'create') {
-      setSidebarMode(mode);
+    if (modeParam === 'drafts' || modeParam === 'create') {
+      setSidebarMode(prev => (prev !== modeParam ? (modeParam as 'drafts' | 'create') : prev));
     }
-  }, [searchParams]);
+  }, [modeParam]);
 
   const parseAspectRatio = (ratio: string) => {
     const [w, h] = ratio.split(':').map(Number);
@@ -231,6 +231,8 @@ export default function SlideshowEditor() {
   const canvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
   const miniCanvasRefs = useRef<{[key: string]: fabric.Canvas}>({});
   const miniCanvasElementRefs = useRef<{[key: string]: HTMLCanvasElement}>({});
+  const initializingCanvasesRef = useRef<Set<string>>(new Set());
+  const initializingMiniCanvasesRef = useRef<Set<string>>(new Set());
 
   // Helper function to scale image to fill entire canvas background
   const scaleImageToFillCanvas = (img: fabric.Image, canvasWidth: number, canvasHeight: number) => {
@@ -259,6 +261,24 @@ export default function SlideshowEditor() {
       top: (canvasHeight - scaledHeight) / 2,
       originX: 'left',
       originY: 'top'
+    });
+  };
+
+  // Helper to load Fabric image with a Promise, compatible with callback-based API
+  const loadFabricImage = (url: string, options?: fabric.IImageOptions): Promise<fabric.Image> => {
+    return new Promise((resolve, reject) => {
+      try {
+        fabric.Image.fromURL(
+          url,
+          (img: fabric.Image | undefined) => {
+            if (img) resolve(img);
+            else reject(new Error('Failed to load image'));
+          },
+          options || { crossOrigin: 'anonymous' }
+        );
+      } catch (err) {
+        reject(err);
+      }
     });
   };
 
@@ -453,7 +473,7 @@ export default function SlideshowEditor() {
   }, [selectedSlideId, selectedSlideshowId]);
 
   // Cleanup function for fabric canvases
-  const disposeCanvas = (slideId: string) => {
+  const disposeCanvas = (slideId: string, silent: boolean = false) => {
     // Don't dispose during slide deletion to avoid DOM conflicts
     if (isDeletingSlide) {
       delete canvasRefs.current[slideId];
@@ -488,12 +508,14 @@ export default function SlideshowEditor() {
     if (canvasElementRefs.current[slideId]) {
       delete canvasElementRefs.current[slideId];
     }
-    // Clean up ready state
-    setCanvasReadyStates(prev => {
-      const newState = { ...prev };
-      delete newState[slideId];
-      return newState;
-    });
+    // Clean up ready state without causing re-render loops when silent
+    if (!silent) {
+      setCanvasReadyStates(prev => {
+        const newState = { ...prev };
+        delete newState[slideId];
+        return newState;
+      });
+    }
   };
 
   // Cleanup function for mini canvases
@@ -573,28 +595,23 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
-          img.set({
-            selectable: false,
-            evented: false,
-            isBackground: true
-          });
-          
-          // Scale image to fill entire canvas background
-          scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
-          
-          canvas.add(img);
-          canvas.renderAll();
-          
-          // After background is loaded, restore text elements and overlays
-          restoreTextElementsMini(slideId, canvas);
-          restoreImageOverlaysMini(slideId, canvas);
-        }).catch((error) => {
-          console.warn('Failed to load background image for mini canvas:', slide.backgroundImage, error);
-          // Continue without background image
-          restoreTextElementsMini(slideId, canvas);
-          restoreImageOverlaysMini(slideId, canvas);
-        });
+        fabric.Image.fromURL(
+          slide.backgroundImage,
+          (img: fabric.Image) => {
+            try {
+              img.set({ selectable: false, evented: false, isBackground: true });
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+              canvas.renderAll();
+            } catch (error) {
+              console.warn('Failed to apply background image for mini canvas:', error);
+            } finally {
+              restoreTextElementsMini(slideId, canvas);
+              restoreImageOverlaysMini(slideId, canvas);
+            }
+          },
+          { crossOrigin: 'anonymous' }
+        );
       } else {
         // No background image, just restore text elements and overlays
         restoreTextElementsMini(slideId, canvas);
@@ -755,11 +772,10 @@ export default function SlideshowEditor() {
       return;
     }
 
-    // Dispose existing canvas if it exists
-    disposeCanvas(slideId);
-
-    // Mark canvas as not ready initially
-    setCanvasReadyStates(prev => ({ ...prev, [slideId]: false }));
+    // Dispose existing canvas if it exists without triggering state updates to avoid render loops
+    if (canvasRefs.current[slideId]) {
+      disposeCanvas(slideId, true);
+    }
 
     try {
       const canvas = new fabric.Canvas(canvasElement, {
@@ -771,6 +787,12 @@ export default function SlideshowEditor() {
       // Store references
       canvasRefs.current[slideId] = canvas;
       canvasElementRefs.current[slideId] = canvasElement;
+      
+      // Mark canvas as not ready initially AFTER refs are set to avoid ref re-init loops
+      setCanvasReadyStates(prev => {
+        if (prev[slideId] === false) return prev;
+        return { ...prev, [slideId]: false };
+      });
       
       // Add canvas selection event listeners with improved logic
       const handleSelectionChange = () => {
@@ -823,36 +845,31 @@ export default function SlideshowEditor() {
       // Add background image if exists
       const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
       if (slide?.backgroundImage) {
-        fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
-          img.set({
-            selectable: false,
-            evented: false,
-            isBackground: true
-          });
-          
-          // Scale image to fill entire canvas background
-          scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
-          
-          canvas.add(img);
-          canvas.renderAll();
-          
-          // After background is loaded, restore text elements and overlays
-          restoreTextElements(slideId, canvas);
-          restoreImageOverlays(slideId, canvas);
-          
-          // Mark canvas as ready after everything is loaded
-          markCanvasReady(slideId);
-        }).catch((error) => {
-          console.warn('Failed to load background image:', slide.backgroundImage, error);
-          // Continue without background image - canvas will remain white
-          
-          // Still restore text elements and overlays even if background fails
-          restoreTextElements(slideId, canvas);
-          restoreImageOverlays(slideId, canvas);
-          
-          // Mark canvas as ready even if background failed
-          markCanvasReady(slideId);
-        });
+        fabric.Image.fromURL(
+          slide.backgroundImage,
+          (img: fabric.Image) => {
+            try {
+              img.set({
+                selectable: false,
+                evented: false,
+                isBackground: true
+              });
+              // Scale image to fill entire canvas background
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+              canvas.renderAll();
+            } catch (error) {
+              console.warn('Failed to apply background image settings:', error);
+            } finally {
+              // After background is handled, restore text elements and overlays
+              restoreTextElements(slideId, canvas);
+              restoreImageOverlays(slideId, canvas);
+              // Mark canvas as ready after everything is handled
+              markCanvasReady(slideId);
+            }
+          },
+          { crossOrigin: 'anonymous' }
+        );
       } else {
         // No background image, just restore text elements and overlays
         restoreTextElements(slideId, canvas);
@@ -864,7 +881,7 @@ export default function SlideshowEditor() {
     } catch (error) {
       console.error('Failed to initialize canvas:', error);
       // Clean up any partial initialization
-      disposeCanvas(slideId);
+      disposeCanvas(slideId, true);
     }
   };
 
@@ -897,7 +914,7 @@ export default function SlideshowEditor() {
       });
 
       // Store the text ID on the fabric object for later reference
-      fabricText.set('textId', textData.id);
+      (fabricText as any).set('textId', textData.id);
 
       // Listen for text changes and update data
       fabricText.on('changed', () => updateTextData(textData.id, fabricText));
@@ -917,12 +934,12 @@ export default function SlideshowEditor() {
   };
 
   const ensureProperLayering = (canvas: fabric.Canvas) => {
-    const objects = canvas.getObjects();
+    const objects: any[] = canvas.getObjects() as any;
     
     // Sort objects by type: background -> overlays -> text
-    const backgroundObjects = objects.filter(obj => obj.get('isBackground'));
-    const overlayObjects = objects.filter(obj => obj.get('overlayId'));  
-    const textObjects = objects.filter(obj => obj.get('textId'));
+    const backgroundObjects = objects.filter(obj => (obj as any).get('isBackground'));
+    const overlayObjects = objects.filter(obj => (obj as any).get('overlayId'));  
+    const textObjects = objects.filter(obj => (obj as any).get('textId'));
     
     // If objects are already in correct order, no need to reorganize
     const correctOrder = [...backgroundObjects, ...overlayObjects, ...textObjects];
@@ -930,7 +947,9 @@ export default function SlideshowEditor() {
     
     let needsReordering = false;
     for (let i = 0; i < correctOrder.length; i++) {
-      if (currentOrder[i] !== correctOrder[i]) {
+      const cur = currentOrder[i] as any;
+      const cor = correctOrder[i] as any;
+      if (cur !== cor) {
         needsReordering = true;
         break;
       }
@@ -938,52 +957,52 @@ export default function SlideshowEditor() {
     
     if (needsReordering) {
       // Remove all objects and re-add in correct order
-      objects.forEach(obj => canvas.remove(obj));
-      correctOrder.forEach(obj => canvas.add(obj));
+      objects.forEach((obj: any) => canvas.remove(obj));
+      correctOrder.forEach((obj: any) => canvas.add(obj));
       canvas.renderAll();
     }
   };
 
-  const restoreImageOverlays = (slideId: string, canvas: fabric.Canvas) => {
+  const restoreImageOverlays = async (slideId: string, canvas: fabric.Canvas) => {
     const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
     if (!slide?.overlays) return;
 
-    slide.overlays.forEach((overlayData: SlideOverlay) => {
-      if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
-          img.set({
-            left: overlayData.position_x,
-            top: overlayData.position_y,
-            angle: overlayData.rotation,
-            scaleX: overlayData.size / 100,
-            scaleY: overlayData.size / 100,
-            originX: 'center',
-            originY: 'center',
-            lockUniScaling: true // Maintain aspect ratio
-          });
-
-          // Disable stretching controls for image overlays
-          img.setControlsVisibility({
-            ml: false, // middle left
-            mb: false, // middle bottom  
-            mr: false, // middle right
-            mt: false, // middle top
-          });
-
-          // Store the overlay ID on the fabric object for later reference
-          img.set('overlayId', overlayData.id);
-
-          // Listen for changes and update data
-          img.on('moving', () => updateOverlayData(overlayData.id, img));
-          img.on('rotating', () => updateOverlayData(overlayData.id, img));
-          img.on('scaling', () => updateOverlayData(overlayData.id, img));
-
-          canvas.add(img);
-        }).catch((error) => {
-          console.warn('Failed to restore image overlay:', overlayData.imageUrl, error);
+    for (const overlayData of slide.overlays) {
+      if (!overlayData.imageUrl) continue;
+      try {
+        const img = await loadFabricImage(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+        img.set({
+          left: overlayData.position_x,
+          top: overlayData.position_y,
+          angle: overlayData.rotation,
+          scaleX: overlayData.size / 100,
+          scaleY: overlayData.size / 100,
+          originX: 'center',
+          originY: 'center',
+          lockUniScaling: true // Maintain aspect ratio
         });
+
+        // Disable stretching controls for image overlays
+        img.setControlsVisibility({
+          ml: false, // middle left
+          mb: false, // middle bottom  
+          mr: false, // middle right
+          mt: false, // middle top
+        });
+
+        // Store the overlay ID on the fabric object for later reference
+        (img as any).set('overlayId', overlayData.id);
+
+        // Listen for changes and update data
+        img.on('moving', () => updateOverlayData(overlayData.id, img));
+        img.on('rotating', () => updateOverlayData(overlayData.id, img));
+        img.on('scaling', () => updateOverlayData(overlayData.id, img));
+
+        canvas.add(img);
+      } catch (error) {
+        console.warn('Failed to restore image overlay:', overlayData.imageUrl, error);
       }
-    });
+    }
 
     canvas.renderAll();
     
@@ -1017,32 +1036,31 @@ export default function SlideshowEditor() {
   };
 
   // Restore image overlays for mini canvas (read-only, optimized)
-  const restoreImageOverlaysMini = (slideId: string, canvas: fabric.Canvas) => {
+  const restoreImageOverlaysMini = async (slideId: string, canvas: fabric.Canvas) => {
     const slide = currentSlideshow?.slides.find((s: Slide) => s.id === slideId);
     if (!slide?.overlays) return;
 
-    slide.overlays.forEach((overlayData: SlideOverlay) => {
-      if (overlayData.imageUrl) {
-        fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
-          img.set({
-            left: overlayData.position_x,
-            top: overlayData.position_y,
-            angle: overlayData.rotation,
-            scaleX: overlayData.size / 100,
-            scaleY: overlayData.size / 100,
-            originX: 'center',
-            originY: 'center',
-            lockUniScaling: true,
-            selectable: false,
-            evented: false
-          });
-
-          canvas.add(img);
-        }).catch((error) => {
-          console.warn('Failed to restore image overlay for mini canvas:', overlayData.imageUrl, error);
+    for (const overlayData of slide.overlays) {
+      if (!overlayData.imageUrl) continue;
+      try {
+        const img = await loadFabricImage(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+        img.set({
+          left: overlayData.position_x,
+          top: overlayData.position_y,
+          angle: overlayData.rotation,
+          scaleX: overlayData.size / 100,
+          scaleY: overlayData.size / 100,
+          originX: 'center',
+          originY: 'center',
+          lockUniScaling: true,
+          selectable: false,
+          evented: false
         });
+        canvas.add(img);
+      } catch (error) {
+        console.warn('Failed to restore image overlay for mini canvas:', overlayData.imageUrl, error);
       }
-    });
+    }
 
     canvas.renderAll();
   };
@@ -1312,7 +1330,7 @@ export default function SlideshowEditor() {
     setHasUnsavedChanges(true);
 
     // Create fabric text object
-    const fabricText = new fabric.IText(newText.text, {
+      const fabricText = new fabric.IText(newText.text, {
       left: newText.position_x,
       top: newText.position_y,
       fontSize: newText.size,
@@ -1334,7 +1352,7 @@ export default function SlideshowEditor() {
     });
 
     // Store the text ID on the fabric object for later reference
-    fabricText.set('textId', textId);
+    (fabricText as any).set('textId', textId);
 
     // Listen for text changes and update data
     fabricText.on('changed', () => updateTextData(textId, fabricText));
@@ -1405,10 +1423,7 @@ export default function SlideshowEditor() {
       // Mark as having unsaved changes
       setHasUnsavedChanges(true);
 
-      if (
-        selectedTextObjectRef.current &&
-        selectedTextObjectRef.current.textId === textId
-      ) {
+      if (selectedTextObjectRef.current && selectedTextObjectRef.current.textId === textId) {
         updateSelectedTextObject({ fabricObject: fabricText, textId });
       }
     }
@@ -1432,7 +1447,7 @@ export default function SlideshowEditor() {
         fabricImage.set('angle', snappedAngle);
       }
       
-      overlayData.size = Math.round((fabricImage.scaleX || 1) * 100);
+      overlayData.size = Math.round(((fabricImage as any).scaleX || 1) * 100);
       
       // Update local state to persist changes when switching slides
       updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
@@ -1461,15 +1476,15 @@ export default function SlideshowEditor() {
       const canvas = canvasRefs.current[selectedSlideId];
       if (canvas) {
         // Clear existing background images
-        const objects = canvas.getObjects();
-        objects.forEach(obj => {
+        const objects: any[] = canvas.getObjects() as any;
+        objects.forEach((obj: any) => {
           if (obj.get('isBackground')) {
             canvas.remove(obj);
           }
         });
 
         // Add new background image
-        fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
+        loadFabricImage(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
           img.set({
             selectable: false,
             evented: false,
@@ -1484,7 +1499,7 @@ export default function SlideshowEditor() {
           // Ensure proper layering after adding background
           ensureProperLayering(canvas);
           canvas.renderAll();
-        }).catch((error) => {
+        }).catch((error: unknown) => {
           console.warn('Failed to load selected background image:', imageUrl, error);
         });
       }
@@ -1509,7 +1524,7 @@ export default function SlideshowEditor() {
     // Add to canvas first to get image dimensions
     const canvas = canvasRefs.current[selectedSlideId];
     if (canvas) {
-      fabric.Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
+        loadFabricImage(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
         // Calculate smart sizing based on image dimensions
         const canvasWidth = CANVAS_WIDTH;
         const canvasHeight = CANVAS_HEIGHT;
@@ -1574,7 +1589,7 @@ export default function SlideshowEditor() {
         });
 
         // Store the overlay ID on the fabric object for later reference
-        img.set('overlayId', overlayId);
+        (img as any).set('overlayId', overlayId);
 
         // Listen for changes and update data
         img.on('moving', () => updateOverlayData(overlayId, img));
@@ -1587,7 +1602,7 @@ export default function SlideshowEditor() {
         
         // Ensure proper layering with image overlays below text
         ensureProperLayering(canvas);
-      }).catch((error) => {
+      }).catch((error: unknown) => {
         console.warn('Failed to load image overlay:', imageUrl, error);
       });
     }
@@ -1691,7 +1706,7 @@ export default function SlideshowEditor() {
       }
 
       if (slide.backgroundImage) {
-        const img = await fabric.Image.fromURL(slide.backgroundImage, { crossOrigin: 'anonymous' });
+        const img = await loadFabricImage(slide.backgroundImage, { crossOrigin: 'anonymous' });
         img.set({ selectable: false, evented: false, isBackground: true });
         scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
         canvas.add(img);
@@ -1714,7 +1729,7 @@ export default function SlideshowEditor() {
       if (slide.overlays && slide.overlays.length > 0) {
         for (const overlayData of slide.overlays) {
           if (overlayData.imageUrl) {
-            const img = await fabric.Image.fromURL(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+            const img = await loadFabricImage(overlayData.imageUrl, { crossOrigin: 'anonymous' });
             img.set({
               left: overlayData.position_x,
               top: overlayData.position_y,
@@ -1781,7 +1796,7 @@ export default function SlideshowEditor() {
       run();
     });
     clearRerenderIds();
-  }, [rerenderIds, slideshows, queueSlideshowRender, clearRerenderIds, createGetSlideCanvas]);
+  }, [rerenderIds, slideshows]);
 
   const handleRender = async () => {
     if (!currentSlideshow) return;
@@ -2101,15 +2116,17 @@ export default function SlideshowEditor() {
                           <canvas
                             key={`canvas-${slide.id}-${slideRenderKey}`}
                             ref={(el) => {
-                              if (el && !canvasRefs.current[slide.id]) {
-                                // Use requestAnimationFrame to ensure DOM is ready
-                                requestAnimationFrame(() => {
-                                  // Double-check the element is still in DOM before initializing
-                                  if (el.parentNode && !canvasRefs.current[slide.id]) {
-                                    initializeCanvas(slide.id, el);
-                                  }
-                                });
-                              }
+                              if (!el) return;
+                              if (canvasRefs.current[slide.id]) return;
+                              if (initializingCanvasesRef.current.has(slide.id)) return;
+                              initializingCanvasesRef.current.add(slide.id);
+                              requestAnimationFrame(() => {
+                                // Double-check the element is still in DOM before initializing
+                                if (el.parentNode && !canvasRefs.current[slide.id]) {
+                                  initializeCanvas(slide.id, el);
+                                }
+                                initializingCanvasesRef.current.delete(slide.id);
+                              });
                             }}
                             width={CANVAS_WIDTH}
                             height={CANVAS_HEIGHT}
@@ -2120,15 +2137,16 @@ export default function SlideshowEditor() {
                         <canvas
                           key={`mini-canvas-${slide.id}-${slideRenderKey}`}
                           ref={(el) => {
-                            if (el && !miniCanvasRefs.current[slide.id]) {
-                              // Use requestAnimationFrame to ensure DOM is ready
-                              requestAnimationFrame(() => {
-                                // Double-check the element is still in DOM before initializing
-                                if (el.parentNode && !miniCanvasRefs.current[slide.id]) {
-                                  initializeMiniCanvas(slide.id, el);
-                                }
-                              });
-                            }
+                            if (!el) return;
+                            if (miniCanvasRefs.current[slide.id]) return;
+                            if (initializingMiniCanvasesRef.current.has(slide.id)) return;
+                            initializingMiniCanvasesRef.current.add(slide.id);
+                            requestAnimationFrame(() => {
+                              if (el.parentNode && !miniCanvasRefs.current[slide.id]) {
+                                initializeMiniCanvas(slide.id, el);
+                              }
+                              initializingMiniCanvasesRef.current.delete(slide.id);
+                            });
                           }}
                           width={CANVAS_WIDTH}
                           height={CANVAS_HEIGHT}

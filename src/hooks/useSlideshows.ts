@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
-import * as fabric from 'fabric'
+import { fabric } from 'fabric'
 
 export interface SlideText {
   id: string;
@@ -20,7 +20,6 @@ export interface SlideOverlay {
   id: string;
   slide_id: string;
   image_id: string;
-  crop?: any;
   position_x: number;
   position_y: number;
   rotation: number;
@@ -354,7 +353,6 @@ export function useSlideshows() {
               id,
               slide_id,
               image_id,
-              crop,
               position_x,
               position_y,
               rotation,
@@ -736,7 +734,6 @@ export function useSlideshows() {
         const overlayInserts = overlays.map(overlay => ({
           slide_id: slideId,
           image_id: overlay.image_id,
-          crop: overlay.crop || null,
           position_x: Math.round(overlay.position_x),
           position_y: Math.round(overlay.position_y),
           rotation: Math.round(overlay.rotation),
@@ -1092,7 +1089,6 @@ export function useSlideshows() {
               id,
               slide_id,
               image_id,
-              crop,
               position_x,
               position_y,
               rotation,
