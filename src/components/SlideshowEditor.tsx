@@ -617,7 +617,12 @@ export default function SlideshowEditor() {
           { crossOrigin: 'anonymous' }
         );
       } else {
-        // No background image, just restore text elements and overlays
+        // No background image: set subtle gray only
+        try {
+          canvas.set('backgroundColor', '#f5f5f5');
+        } catch {}
+
+        // Then add any text and overlays on top
         restoreTextElementsMini(slideId, canvas);
         restoreImageOverlaysMini(slideId, canvas);
       }
@@ -875,7 +880,12 @@ export default function SlideshowEditor() {
           { crossOrigin: 'anonymous' }
         );
       } else {
-        // No background image, just restore text elements and overlays
+        // No background image: show subtle gray background only
+        try {
+          canvas.set('backgroundColor', '#f5f5f5');
+        } catch {}
+
+        // Then add any text and overlays on top
         restoreTextElements(slideId, canvas);
         restoreImageOverlays(slideId, canvas);
         
