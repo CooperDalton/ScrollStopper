@@ -151,6 +151,7 @@ export default function SlideshowEditor() {
     stroke: 'black',
     charSpacing: -40, // Decreased letter spacing
     lineHeight: 1.0, // Reduced line spacing
+    fontSize,
   });
 
   // Track selected text object for resize controls
@@ -1683,75 +1684,84 @@ export default function SlideshowEditor() {
     }
   };
 
-  const createGetSlideCanvas = (slideshow: Slideshow) => async (slideId: string) => {
-    // If canvas already exists in refs, return it
-    if (canvasRefs.current[slideId]) {
-      return canvasRefs.current[slideId];
-    }
-
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = CANVAS_WIDTH;
-    tempCanvas.height = CANVAS_HEIGHT;
-
-    try {
-      const canvas = new fabric.Canvas(tempCanvas, {
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
-        backgroundColor: '#ffffff'
-      });
-
-      const slide = slideshow.slides.find(s => s.id === slideId);
-      if (!slide) {
-        console.warn(`Slide ${slideId} not found in slideshow ${slideshow.id}`);
-        return undefined;
+  const createGetSlideCanvas = (slideshow: Slideshow, targetWidth = CANVAS_WIDTH) =>
+    async (slideId: string) => {
+      // If requesting base canvas size and it already exists, return cached version
+      if (targetWidth === CANVAS_WIDTH && canvasRefs.current[slideId]) {
+        return canvasRefs.current[slideId];
       }
 
-      if (slide.backgroundImage) {
-        const img = await loadFabricImage(slide.backgroundImage, { crossOrigin: 'anonymous' });
-        img.set({ selectable: false, evented: false, isBackground: true });
-        scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
-        canvas.add(img);
-      }
+      const scaleFactor = targetWidth / CANVAS_WIDTH;
+      const targetHeight = Math.round(targetWidth / aspectRatio);
 
-      if (slide.texts && slide.texts.length > 0) {
-        for (const textData of slide.texts) {
-          const fabricText = new fabric.IText(textData.text, {
-            ...getTextStyling(textData.size),
-            left: textData.position_x,
-            top: textData.position_y,
-            fontSize: textData.size,
-            angle: textData.rotation,
-            textId: textData.id
-          });
-          canvas.add(fabricText);
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = targetWidth;
+      tempCanvas.height = targetHeight;
+
+      try {
+        const canvas = new fabric.Canvas(tempCanvas, {
+          width: targetWidth,
+          height: targetHeight,
+          backgroundColor: '#ffffff'
+        });
+
+        const slide = slideshow.slides.find(s => s.id === slideId);
+        if (!slide) {
+          console.warn(`Slide ${slideId} not found in slideshow ${slideshow.id}`);
+          return undefined;
         }
-      }
 
-      if (slide.overlays && slide.overlays.length > 0) {
-        for (const overlayData of slide.overlays) {
-          if (overlayData.imageUrl) {
-            const img = await loadFabricImage(overlayData.imageUrl, { crossOrigin: 'anonymous' });
-            img.set({
-              left: overlayData.position_x,
-              top: overlayData.position_y,
-              scaleX: overlayData.size / 100,
-              scaleY: overlayData.size / 100,
-              angle: overlayData.rotation,
-              selectable: false,
-              evented: false
+        if (slide.backgroundImage) {
+          const img = await loadFabricImage(slide.backgroundImage, {
+            crossOrigin: 'anonymous'
+          });
+          img.set({ selectable: false, evented: false, isBackground: true });
+          scaleImageToFillCanvas(img, targetWidth, targetHeight);
+          canvas.add(img);
+        }
+
+        if (slide.texts && slide.texts.length > 0) {
+          for (const textData of slide.texts) {
+            const fabricText = new fabric.IText(textData.text, {
+              ...getTextStyling(textData.size * scaleFactor),
+              left: textData.position_x * scaleFactor,
+              top: textData.position_y * scaleFactor,
+              angle: textData.rotation,
+              textId: textData.id
             });
-            canvas.add(img);
+            canvas.add(fabricText);
           }
         }
-      }
 
-      canvas.renderAll();
-      return canvas;
-    } catch (error) {
-      console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
-      return undefined;
-    }
-  };
+        if (slide.overlays && slide.overlays.length > 0) {
+          for (const overlayData of slide.overlays) {
+            if (overlayData.imageUrl) {
+              const img = await loadFabricImage(overlayData.imageUrl, {
+                crossOrigin: 'anonymous'
+              });
+              img.set({
+                left: overlayData.position_x * scaleFactor,
+                top: overlayData.position_y * scaleFactor,
+                scaleX: (overlayData.size / 100) * scaleFactor,
+                scaleY: (overlayData.size / 100) * scaleFactor,
+                angle: overlayData.rotation,
+                selectable: false,
+                evented: false,
+                originX: 'center',
+                originY: 'center'
+              });
+              canvas.add(img);
+            }
+          }
+        }
+
+        canvas.renderAll();
+        return canvas;
+      } catch (error) {
+        console.error(`Failed to create temporary canvas for slide ${slideId}:`, error);
+        return undefined;
+      }
+    };
 
   const rerendered = useRef<Set<string>>(new Set());
   
@@ -1777,7 +1787,7 @@ export default function SlideshowEditor() {
       const run = async () => {
         setRenderProgress(prev => ({ ...prev, [id]: 0 }));
         try {
-          const getSlideCanvas = createGetSlideCanvas(slideshow);
+          const getSlideCanvas = createGetSlideCanvas(slideshow, 1080);
           await queueSlideshowRender(
             id,
             getSlideCanvas,
@@ -1804,7 +1814,7 @@ export default function SlideshowEditor() {
     setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
 
     try {
-      const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
+      const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow, 1080);
 
       await queueSlideshowRender(
         currentSlideshow.id,
