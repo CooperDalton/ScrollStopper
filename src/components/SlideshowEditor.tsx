@@ -95,7 +95,13 @@ export default function SlideshowEditor() {
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [newAspectRatio, setNewAspectRatio] = useState<string>('9:16');
+  const initialAspectRatioParam = searchParams.get('ar');
+  const [newAspectRatio, setNewAspectRatio] = useState<string>(() => {
+    const allowed = new Set(['9:16', '1:1', '4:5']);
+    return initialAspectRatioParam && allowed.has(initialAspectRatioParam)
+      ? initialAspectRatioParam
+      : '9:16';
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [localSlideshows, setLocalSlideshows] = useState<Slideshow[]>([]);
@@ -130,6 +136,16 @@ export default function SlideshowEditor() {
   const handleSidebarMode = (mode: 'create' | 'drafts') => {
     setSidebarMode(mode);
     updateModeInUrl(mode);
+  };
+
+  const updateAspectRatioInUrl = (ratio: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (ratio) {
+      params.set('ar', ratio);
+    } else {
+      params.delete('ar');
+    }
+    router.replace(`${pathname}?${params.toString()}`);
   };
 
   useEffect(() => {
@@ -881,7 +897,6 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontSize: textData.size, // This is now the effective font size
         angle: textData.rotation,
         scaleX: 1, // Reset scale to 1 since we're using effective fontSize
         scaleY: 1, // Reset scale to 1 since we're using effective fontSize
@@ -1007,7 +1022,6 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(textData.text, {
         left: textData.position_x,
         top: textData.position_y,
-        fontSize: textData.size,
         angle: textData.rotation,
         scaleX: 1,
         scaleY: 1,
@@ -1323,7 +1337,6 @@ export default function SlideshowEditor() {
       const fabricText = new fabric.IText(newText.text, {
       left: newText.position_x,
       top: newText.position_y,
-      fontSize: newText.size,
       angle: newText.rotation,
       lockUniScaling: true,
       ...getTextStyling(newText.size)
@@ -1890,8 +1903,12 @@ export default function SlideshowEditor() {
               </button>
               <select
                 value={newAspectRatio}
-                onChange={(e) => setNewAspectRatio(e.target.value)}
-                className="p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)]"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewAspectRatio(val);
+                  updateAspectRatioInUrl(val);
+                }}
+                className="px-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] appearance-none text-center focus:outline-none"
               >
                 <option value="9:16">9:16</option>
                 <option value="1:1">1:1</option>

@@ -197,7 +197,7 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
                 >
                   <div
                     className={[
-                      'rounded-xl overflow-hidden shadow-lg',
+                      'overflow-hidden shadow-lg',
                       isCenter
                         ? 'w-[55%] border-0'
                         : 'w-[32%] border border-[var(--color-border)]',

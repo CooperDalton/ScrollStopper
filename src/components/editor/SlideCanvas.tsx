@@ -39,7 +39,7 @@ export default function SlideCanvas({
   return (
     <button onClick={onClick} className={`transition-all duration-300 ${isSelected ? 'scale-110' : 'scale-90 hover:scale-95'}`}>
       <div
-        className={`relative rounded-2xl overflow-hidden border-4 ${borderClassName || ''} ${isSelected ? '' : ''} bg-white`}
+        className={`relative overflow-hidden ${borderClassName || ''} ${isSelected ? '' : ''} bg-white`}
         style={{ width, height }}
       >
         {isSelected ? (

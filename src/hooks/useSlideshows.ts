@@ -736,33 +736,35 @@ export function useSlideshows() {
 
       // Then insert all current overlays
       if (overlays.length > 0) {
+        const toInt = (value: unknown) => {
+          const n = Number(value)
+          return Number.isFinite(n) ? Math.round(n) : 0
+        }
+
         const overlayInserts = overlays.map(overlay => ({
           slide_id: slideId,
           image_id: overlay.image_id,
-          position_x: overlay.position_x,
-          position_y: overlay.position_y,
-          rotation: overlay.rotation,
-          size: overlay.size
+          position_x: toInt(overlay.position_x),
+          position_y: toInt(overlay.position_y),
+          rotation: toInt(overlay.rotation),
+          size: toInt(overlay.size)
         }))
 
-        const { data: insertedOverlays, error: insertError } = await supabase
+        // Do not call .select() here to avoid requiring SELECT RLS permissions.
+        const { error: insertError } = await supabase
           .from('slide_overlays')
           .insert(overlayInserts)
-          .select()
 
         if (insertError) throw insertError
 
-        // Update local state with the inserted overlays (which have new IDs)
+        // Update local state using the provided overlays (client-side ids are fine)
         setSlideshows(prev => prev.map(slideshow => ({
           ...slideshow,
           slides: slideshow.slides.map(slide => {
             if (slide.id === slideId) {
               return {
                 ...slide,
-                overlays: insertedOverlays.map(overlay => ({
-                  ...overlay,
-                  imageUrl: overlays.find(o => o.image_id === overlay.image_id)?.imageUrl
-                }))
+                overlays: overlays
               }
             }
             return slide
@@ -790,7 +792,13 @@ export function useSlideshows() {
 
       return true
     } catch (err) {
-      console.error('Error saving slide overlays:', err)
+      // Log rich error details for diagnosis
+      const anyErr = err as any
+      console.error('Error saving slide overlays:', anyErr?.message || anyErr, {
+        code: anyErr?.code,
+        details: anyErr?.details,
+        hint: anyErr?.hint
+      })
       const errorMessage = err instanceof Error ? err.message : 'Failed to save slide overlays'
       setError(errorMessage)
       throw new Error(errorMessage)

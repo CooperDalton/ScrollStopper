@@ -54,7 +54,7 @@ export default function SlidesList({
             initializingMiniRefs={initializingMiniRefs}
             slideRenderKey={slideRenderKey}
             onClick={() => onSelect(slide.id)}
-            borderClassName={selectedSlideId === slide.id ? 'border-[var(--color-primary)]' : 'border-[var(--color-border)]'}
+            borderClassName={''}
           />
         </div>
       ))}
