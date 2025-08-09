@@ -3,6 +3,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { fabric } from 'fabric';
+import EmptyState from '@/components/editor/EmptyState';
+import ControlPanel from '@/components/editor/ControlPanel';
+import SaveButtonOverlay from '@/components/editor/SaveButtonOverlay';
+import DeleteButtonOverlay from '@/components/editor/DeleteButtonOverlay';
+import TextResizeOverlay from '@/components/editor/TextResizeOverlay';
+import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/editor/SlidesRow';
+import SlidesList from '@/components/editor/SlidesList';
+import { scaleImageToFillCanvas, loadFabricImage } from '@/components/editor/fabricUtils';
 import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
@@ -252,54 +260,7 @@ export default function SlideshowEditor() {
   const initializingCanvasesRef = useRef<Set<string>>(new Set());
   const initializingMiniCanvasesRef = useRef<Set<string>>(new Set());
 
-  // Helper function to scale image to fill entire canvas background
-  const scaleImageToFillCanvas = (img: fabric.Image, canvasWidth: number, canvasHeight: number) => {
-    const imgWidth = img.width || 1;
-    const imgHeight = img.height || 1;
-    
-    // Calculate scale factors for both dimensions
-    const scaleX = canvasWidth / imgWidth;
-    const scaleY = canvasHeight / imgHeight;
-    
-    // Use the larger scale factor to ensure complete coverage
-    const scale = Math.max(scaleX, scaleY);
-    
-    // Apply the scale
-    img.set({
-      scaleX: scale,
-      scaleY: scale
-    });
-    
-    // Center the image on the canvas
-    const scaledWidth = imgWidth * scale;
-    const scaledHeight = imgHeight * scale;
-    
-    img.set({
-      left: (canvasWidth - scaledWidth) / 2,
-      top: (canvasHeight - scaledHeight) / 2,
-      originX: 'left',
-      originY: 'top'
-    });
-  };
-
-  // Helper to load Fabric image with a Promise, compatible with callback-based API
-  type ImageFromUrlOptions = { crossOrigin?: string };
-  const loadFabricImage = (url: string, options?: ImageFromUrlOptions): Promise<fabric.Image> => {
-    return new Promise((resolve, reject) => {
-      try {
-        fabric.Image.fromURL(
-          url,
-          (img: fabric.Image | undefined) => {
-            if (img) resolve(img);
-            else reject(new Error('Failed to load image'));
-          },
-          (options as any) || { crossOrigin: 'anonymous' }
-        );
-      } catch (err) {
-        reject(err);
-      }
-    });
-  };
+  // moved to editor/fabricUtils.ts for reuse
 
   // Helper function to snap rotation angles to 90-degree increments
   const snapAngle = (angle: number, threshold: number = 8) => {
@@ -2073,134 +2034,45 @@ export default function SlideshowEditor() {
             
             
             {/* Horizontal Slides Row - Container with fixed width */}
-            <div className="absolute inset-0 flex items-center gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth" ref={scrollContainerRef}>
+            <SlidesRow innerRef={scrollContainerRef}>
               {currentSlideshow && !isEditorCleared ? (
                 <>
-                  {/* Left spacer to allow centering of first slide */}
-                  <div className="flex-shrink-0 w-[500px]"></div>
-                  {currentSlideshow.slides.map((slide, index) => (
-                <div key={`${slide.id}-${slideRenderKey}`} className="flex-shrink-0 flex items-center justify-center relative" data-slide-id={slide.id}>
-                  {/* Save Button - Only shown for selected slide with unsaved changes */}
-                  {selectedSlideId === slide.id && hasUnsavedChanges && (
-                    <div className="absolute -top-19 right-55 z-20">
-                      <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-xl shadow-lg transition-colors font-medium"
-                      >
-                        <SaveIcon />
-                        {isSaving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Delete Button - Always shown for selected slide */}
-                  {selectedSlideId === slide.id && (
-                    <div className="absolute -top-20 left-67 z-20">
-                      <button
-                        onClick={() => handleDeleteSlide(slide.id)}
-                        className="flex items-center justify-center w-12 h-12 bg-gray-100 hover:bg-gray-200 text-red-500 rounded-full shadow-lg transition-colors"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Text Resize Controls - Positioned outside the button to avoid nesting */}
-                  {selectedTextObject && !isTextDragging && selectedSlideId === slide.id && (
-                    <div
-                      className="absolute flex items-center gap-2 z-50 pointer-events-none"
-                      style={{
-                        left: `${(selectedTextObject.position.x / CANVAS_WIDTH) * 100}%`,
-                        top: `${(selectedTextObject.position.y / CANVAS_HEIGHT) * 100}%`,
-                        transform: 'translate(-50%, 0)'
-                      }}
-                    >
-                      <button
-                        className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          adjustFontSize(-1);
-                        }}
-                      >
-                        −
-                      </button>
-                      <button
-                        className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors font-bold text-lg shadow-lg pointer-events-auto"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          adjustFontSize(1);
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  )}
-                  
-                  <button
-                    onClick={async () => await handleSlideSelect(slide.id)}
-                    className={`transition-all duration-300 ${
-                      selectedSlideId === slide.id
-                        ? 'scale-110'
-                        : 'scale-90 hover:scale-95'
-                    }`}
-                  >
-                    <div
-                      className={`relative rounded-2xl overflow-hidden border-4 ${
-                      selectedSlideId === slide.id
-                        ? 'border-[var(--color-primary)]'
-                        : 'border-[var(--color-border)]'
-                      } ${selectedSlideId === slide.id ? '' : ''} bg-white`}
-                      style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
-                    >
-                      
-                      {selectedSlideId === slide.id ? (
-                        <div className="relative w-full h-full">
-                          <canvas
-                            key={`canvas-${slide.id}-${slideRenderKey}`}
-                            ref={(el) => {
-                              if (!el) return;
-                              if (canvasRefs.current[slide.id]) return;
-                              if (initializingCanvasesRef.current.has(slide.id)) return;
-                              initializingCanvasesRef.current.add(slide.id);
-                              requestAnimationFrame(() => {
-                                // Double-check the element is still in DOM before initializing
-                                if (el.parentNode && !canvasRefs.current[slide.id]) {
-                                  initializeCanvas(slide.id, el);
-                                }
-                                initializingCanvasesRef.current.delete(slide.id);
-                              });
-                            }}
-                            width={CANVAS_WIDTH}
-                            height={CANVAS_HEIGHT}
-                            className="w-full h-full"
-                          />
-                        </div>
-                      ) : (
-                        <canvas
-                          key={`mini-canvas-${slide.id}-${slideRenderKey}`}
-                          ref={(el) => {
-                            if (!el) return;
-                            if (miniCanvasRefs.current[slide.id]) return;
-                            if (initializingMiniCanvasesRef.current.has(slide.id)) return;
-                            initializingMiniCanvasesRef.current.add(slide.id);
-                            requestAnimationFrame(() => {
-                              if (el.parentNode && !miniCanvasRefs.current[slide.id]) {
-                                initializeMiniCanvas(slide.id, el);
-                              }
-                              initializingMiniCanvasesRef.current.delete(slide.id);
-                            });
-                          }}
-                          width={CANVAS_WIDTH}
-                          height={CANVAS_HEIGHT}
-                          className="w-full h-full"
+                  <SlidesLeftSpacer />
+                  <SlidesList
+                    slides={currentSlideshow.slides}
+                    selectedSlideId={selectedSlideId}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    onSelect={async (id) => await handleSlideSelect(id)}
+                    initialize={initializeCanvas}
+                    initializeMini={initializeMiniCanvas}
+                    canvasRefs={canvasRefs}
+                    miniCanvasRefs={miniCanvasRefs}
+                    initializingRefs={initializingCanvasesRef}
+                    initializingMiniRefs={initializingMiniCanvasesRef}
+                    slideRenderKey={slideRenderKey}
+                    renderOverlays={(id) => (
+                      <>
+                        <SaveButtonOverlay
+                          show={selectedSlideId === id && hasUnsavedChanges}
+                          onSave={handleSave}
+                          isSaving={isSaving}
                         />
-                      )}
-                    </div>
-                  </button>
-                </div>
-                  ))}
-                  {/* Add Slide Button (visible only when a slideshow is selected) */}
+                        <DeleteButtonOverlay
+                          show={selectedSlideId === id}
+                          onDelete={() => handleDeleteSlide(id)}
+                        />
+                        <TextResizeOverlay
+                          visible={Boolean(selectedTextObject) && !isTextDragging && selectedSlideId === id}
+                          position={selectedTextObject?.position || null}
+                          canvasWidth={CANVAS_WIDTH}
+                          canvasHeight={CANVAS_HEIGHT}
+                          onDecrease={() => adjustFontSize(-1)}
+                          onIncrease={() => adjustFontSize(1)}
+                        />
+                      </>
+                    )}
+                  />
                   <div className="flex-shrink-0 flex items-center justify-center">
                     <button
                       onClick={handleAddSlide}
@@ -2213,65 +2085,26 @@ export default function SlideshowEditor() {
                       </div>
                     </button>
                   </div>
-                  {/* Right spacer to allow centering of last slide */}
-                  <div className="flex-shrink-0 w-[400px]"></div>
+                  <SlidesRightSpacer />
                 </>
               ) : (
-                <div className="w-full flex items-center justify-center">
-                  <div className="text-center text-[var(--color-text-muted)]">
-                    <p className="text-lg font-medium">Create a new slideshow to start editing</p>
-                    <p className="text-sm mt-2">Use the button in the left panel to make a new draft.</p>
-                  </div>
-                </div>
+                <EmptyState />
               )}
-
-              
-            </div>
+            </SlidesRow>
           </div>
         </div>
 
-        {/* Control Panel - Fixed position in center of slides area */}
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setIsBackgroundModalOpen(true)}
-                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
-                title="Background"
-              >
-                <BackgroundIcon />
-              </button>
-              <button 
-                onClick={handleAddText}
-                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
-                title="Add Text"
-              >
-                <TextIcon />
-              </button>
-              <button 
-                onClick={() => setIsImageModalOpen(true)}
-                className="p-3 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors"
-                title="Add Image"
-              >
-                <ImageIcon />
-              </button>
-              <button
-                onClick={handleDurationClick}
-                className="px-4 py-2 bg-gray-100 text-black rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
-                title="Slide Duration"
-              >
-                {currentSlide?.duration_seconds || 3}s
-              </button>
-              <button
-                onClick={handleRender}
-                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors"
-                title="Create"
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
+        <ControlPanel
+          onBackground={() => setIsBackgroundModalOpen(true)}
+          onAddText={handleAddText}
+          onAddImage={() => setIsImageModalOpen(true)}
+          onDuration={handleDurationClick}
+          durationLabel={`${currentSlide?.duration_seconds || 3}s`}
+          onCreate={handleRender}
+          BackgroundIcon={BackgroundIcon}
+          TextIcon={TextIcon}
+          ImageIcon={ImageIcon}
+        />
       </div>
 
       {/* Background Image Selection Modal */}
