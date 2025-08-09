@@ -32,7 +32,7 @@ export default function CollectionThumbnail({ collection, className = "w-full h-
     return (
       <div className={`${className} rounded-lg overflow-hidden`}>
         <img
-          src={getImageUrl(sampleImages[0].file_path)}
+          src={getImageUrl((sampleImages[0] as any).storage_path || (sampleImages[0] as any).file_path)}
           alt={collection.name}
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -62,7 +62,7 @@ export default function CollectionThumbnail({ collection, className = "w-full h-
       {imagesToShow.map((image: Image, index: number) => (
         <div key={image.id} className="flex-1 overflow-hidden bg-[var(--color-bg-tertiary)]">
           <img
-            src={getImageUrl(image.file_path)}
+            src={getImageUrl((image as any).storage_path || (image as any).file_path)}
             alt={`${collection.name} ${index + 1}`}
             className="w-full h-full object-cover"
             onError={(e) => {

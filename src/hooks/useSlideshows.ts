@@ -334,10 +334,7 @@ export function useSlideshows() {
             duration_seconds,
             index,
             created_at,
-            background_image:images!background_image_id (
-              id,
-              file_path
-            ),
+            background_image:images!background_image_id ( id, * ),
             slide_texts (
               id,
               slide_id,
@@ -358,10 +355,7 @@ export function useSlideshows() {
               rotation,
               size,
               created_at,
-              overlay_image:images!image_id (
-                id,
-                file_path
-              )
+              overlay_image:images!image_id ( id, * )
             )
           )
         `)
@@ -380,9 +374,13 @@ export function useSlideshows() {
             texts: slide.slide_texts || [],
             overlays: (slide.slide_overlays || []).map((overlay: any) => ({
               ...overlay,
-              imageUrl: overlay.overlay_image?.file_path ? getImageUrl(overlay.overlay_image.file_path) : undefined
+              imageUrl: (overlay.overlay_image?.storage_path || overlay.overlay_image?.file_path)
+                ? getImageUrl(overlay.overlay_image.storage_path || overlay.overlay_image.file_path)
+                : undefined
             })),
-            backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
+            backgroundImage: (slide.background_image?.storage_path || slide.background_image?.file_path)
+              ? getImageUrl(slide.background_image.storage_path || slide.background_image.file_path)
+              : undefined
           }))
       }))
 
@@ -663,17 +661,18 @@ export function useSlideshows() {
     try {
       setError(null)
 
-      // Get the image file_path if imageId is provided
+      // Get the image storage/file path if imageId is provided
       let backgroundImageUrl: string | undefined = undefined
       if (imageId) {
         const { data: imageData, error: imageError } = await supabase
           .from('images')
-          .select('file_path')
+          .select('*')
           .eq('id', imageId)
           .single()
 
         if (imageError) throw imageError
-        backgroundImageUrl = getImageUrl(imageData.file_path)
+        const path = (imageData as any).storage_path || (imageData as any).file_path
+        backgroundImageUrl = path ? getImageUrl(path) : undefined
       }
 
       // Update the slide's background_image_id in the database
@@ -1070,10 +1069,7 @@ export function useSlideshows() {
             duration_seconds,
             index,
             created_at,
-            background_image:images!background_image_id (
-              id,
-              file_path
-            ),
+            background_image:images!background_image_id ( id, * ),
             slide_texts (
               id,
               slide_id,
@@ -1094,10 +1090,7 @@ export function useSlideshows() {
               rotation,
               size,
               created_at,
-              overlay_image:images!image_id (
-                id,
-                file_path
-              )
+              overlay_image:images!image_id ( id, * )
             )
           )
         `)
@@ -1117,9 +1110,13 @@ export function useSlideshows() {
             texts: slide.slide_texts || [],
             overlays: (slide.slide_overlays || []).map((overlay: any) => ({
               ...overlay,
-              imageUrl: overlay.overlay_image?.file_path ? getImageUrl(overlay.overlay_image.file_path) : undefined
+              imageUrl: (overlay.overlay_image?.storage_path || overlay.overlay_image?.file_path)
+                ? getImageUrl(overlay.overlay_image.storage_path || overlay.overlay_image.file_path)
+                : undefined
             })),
-            backgroundImage: slide.background_image?.file_path ? getImageUrl(slide.background_image.file_path) : undefined
+            backgroundImage: (slide.background_image?.storage_path || slide.background_image?.file_path)
+              ? getImageUrl(slide.background_image.storage_path || slide.background_image.file_path)
+              : undefined
           }))
       } as Slideshow
     }

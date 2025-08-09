@@ -52,8 +52,8 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
   // Enable escape key to close modal
   useEscapeKey(handleClose, isOpen);
 
-  const handleImageSelect = (imageId: string, filePath: string) => {
-    const imageUrl = getImageUrl(filePath);
+  const handleImageSelect = (imageId: string, filePathOrStoragePath: string) => {
+    const imageUrl = getImageUrl(filePathOrStoragePath);
     onImageSelect(imageUrl, imageId);
     handleClose();
   };
@@ -157,13 +157,14 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
             ) : images.length > 0 ? (
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {images.map((image) => {
-                  const imageUrl = getImageUrl(image.file_path);
+                  const path = (image as any).storage_path || (image as any).file_path || '';
+                  const imageUrl = path ? getImageUrl(path) : '';
                   const hasError = imageLoadErrors.has(image.id);
                   
                   return (
                     <button
                       key={image.id}
-                      onClick={() => handleImageSelect(image.id, image.file_path)}
+                      onClick={() => handleImageSelect(image.id, path)}
                       className="aspect-[9/16] bg-[var(--color-bg-secondary)] rounded-lg overflow-hidden border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors group"
                     >
                       {hasError ? (

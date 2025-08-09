@@ -12,7 +12,7 @@ interface ImageUploadModalProps {
   onUpload: (file: File) => Promise<void>;
   onBatchUpload?: (files: File[], onProgress?: (completed: number, total: number, current?: string) => void) => Promise<void>;
   onDelete: (imageId: string) => Promise<void>;
-  images: Array<{ id: string; file_path: string; created_at: string }>;
+  images: Array<{ id: string; file_path?: string; storage_path?: string; created_at: string }>;
   isLoading?: boolean;
 }
 
@@ -275,7 +275,8 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
             ) : (
               <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                 {images.map((image) => {
-                  const imageUrl = getImageUrl(image.file_path);
+                  const path = image.storage_path || image.file_path || '';
+                  const imageUrl = path ? getImageUrl(path) : '';
                   const hasError = imageLoadErrors.has(image.id);
                   const isDeleting = deletingImages.has(image.id);
                   
@@ -289,7 +290,7 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
                           <div className="text-center p-2">
                             <div className="mb-2">❌</div>
                             <div className="font-medium">Failed to load</div>
-                            <div className="text-xs mt-1 break-all opacity-75">{image.file_path}</div>
+                            <div className="text-xs mt-1 break-all opacity-75">{path}</div>
                             <div className="text-xs mt-1 break-all opacity-50">{imageUrl}</div>
                           </div>
                         </div>
@@ -299,7 +300,7 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
                           alt="Uploaded image"
                           className="w-full h-full object-cover"
                           onError={() => {
-                            console.error('Failed to load image:', imageUrl, 'File path:', image.file_path);
+                            console.error('Failed to load image:', imageUrl, 'Path:', path);
                             setImageLoadErrors(prev => new Set(prev).add(image.id));
                           }}
                           onLoad={() => {

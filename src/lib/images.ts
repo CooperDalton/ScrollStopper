@@ -12,9 +12,18 @@ export interface ImageCollection {
 export interface Image {
   id: string
   collection_id: string
-  file_path: string
-  ai_description?: string
-  ai_summary?: string
+  // Backward-compat: old rows had file_path; new rows use storage_path
+  file_path?: string
+  storage_path?: string
+  // New metadata columns (non-AI)
+  mime_type?: string | null
+  bytes?: number | null
+  width?: number | null
+  height?: number | null
+  aspect_ratio?: string | null
+  // Legacy AI fields may exist on old schema; keep optional for typing safety
+  ai_description?: string | null
+  ai_summary?: string | null
   ai_json?: any
   created_at: string
 }
@@ -108,11 +117,13 @@ export async function deleteCollection(id: string) {
     // First delete all images in the collection from storage
     const { data: images } = await supabase
       .from('images')
-      .select('file_path')
+      .select('*')
       .eq('collection_id', id)
 
     if (images && images.length > 0) {
-      const filePaths = images.map(img => img.file_path)
+      const filePaths = images
+        .map(img => (img as any).storage_path || (img as any).file_path)
+        .filter(Boolean) as string[]
       await supabase.storage
         .from('user-images')
         .remove(filePaths)
@@ -154,15 +165,43 @@ export async function uploadImageToCollection(file: File, collectionId: string) 
 
     if (uploadError) throw uploadError
 
+    // Extract intrinsic width/height from the file
+    const getImageDimensions = (blob: Blob) =>
+      new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          resolve({ width: img.naturalWidth || (img as any).width || 0, height: img.naturalHeight || (img as any).height || 0 })
+          URL.revokeObjectURL(img.src)
+        }
+        img.onerror = reject
+        img.src = URL.createObjectURL(blob)
+      })
+
+    let width: number | null = null
+    let height: number | null = null
+    try {
+      const dims = await getImageDimensions(file)
+      width = Number.isFinite(dims.width) ? dims.width : null
+      height = Number.isFinite(dims.height) ? dims.height : null
+    } catch (_) {
+      // Ignore; leave nulls
+    }
+
+    const aspectRatio = width && height ? `${width}:${height}` : null
+
     // Save image record to database
     const { data: image, error: dbError } = await supabase
       .from('images')
       .insert({
         collection_id: collectionId,
-        file_path: filePath,
-        ai_description: null, // Will be filled later with AI
-        ai_summary: null,     // Will be filled later with AI
-        ai_json: null,        // Will be filled later with AI
+        user_id: user.id,
+        storage_path: filePath,
+        mime_type: file.type || null,
+        bytes: file.size ?? null,
+        width,
+        height,
+        aspect_ratio: aspectRatio,
+        metadata: {},
       })
       .select()
       .single()
@@ -202,16 +241,17 @@ export async function deleteImage(imageId: string) {
     // Get the image file path first
     const { data: image, error: fetchError } = await supabase
       .from('images')
-      .select('file_path')
+      .select('*')
       .eq('id', imageId)
       .single()
 
     if (fetchError) throw fetchError
 
     // Delete from storage
+    const path = (image as any).storage_path || (image as any).file_path
     const { error: storageError } = await supabase.storage
       .from('user-images')
-      .remove([image.file_path])
+      .remove([path])
 
     if (storageError) throw storageError
 
@@ -231,7 +271,6 @@ export async function deleteImage(imageId: string) {
 
 export function getImageUrl(filePath: string) {
   try {
-    
     const { data } = supabase.storage
       .from('user-images')
       .getPublicUrl(filePath)
