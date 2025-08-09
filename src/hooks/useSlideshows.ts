@@ -164,6 +164,8 @@ const createGetSlideCanvas = (slideshow: Slideshow) => async (
             scaleX: overlayData.size / 100,
             scaleY: overlayData.size / 100,
             angle: overlayData.rotation,
+            originX: 'center',
+            originY: 'center',
             selectable: false,
             evented: false
           })
