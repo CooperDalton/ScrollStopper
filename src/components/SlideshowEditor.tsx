@@ -447,6 +447,13 @@ export default function SlideshowEditor() {
     }
   }, [displaySlideshows, selectedSlideshowId, isEditorCleared]);
 
+  // When a slideshow becomes selected externally (e.g., from left panel), exit empty-state
+  useEffect(() => {
+    if (selectedSlideshowId && isEditorCleared) {
+      setIsEditorCleared(false);
+    }
+  }, [selectedSlideshowId]);
+
 
 
   // Track current slide data for auto-save functionality
@@ -1085,6 +1092,8 @@ export default function SlideshowEditor() {
   };
 
   const handleSlideSelect = async (slideId: string) => {
+    // Ensure editor leaves empty-state when a slide is selected
+    if (isEditorCleared) setIsEditorCleared(false);
     // Auto-save current slide if it has unsaved changes before switching
     if (hasUnsavedChanges && selectedSlideId && currentSlide && selectedSlideId !== slideId) {
       console.log('Auto-saving before slide selection...');
@@ -1693,6 +1702,8 @@ export default function SlideshowEditor() {
       if (newSlideshow.slides.length > 0) {
         setSelectedSlideId(newSlideshow.slides[0].id);
       }
+      // Leave empty-state after creating/selecting a new slideshow
+      setIsEditorCleared(false);
     } catch (err) {
       console.error('Failed to create slideshow:', err);
       alert('Failed to create slideshow. Please try again.');
@@ -2189,6 +2200,19 @@ export default function SlideshowEditor() {
                   </button>
                 </div>
                   ))}
+                  {/* Add Slide Button (visible only when a slideshow is selected) */}
+                  <div className="flex-shrink-0 flex items-center justify-center">
+                    <button
+                      onClick={handleAddSlide}
+                      className="bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
+                      style={{ width: MINI_CANVAS_WIDTH, height: MINI_CANVAS_HEIGHT }}
+                    >
+                      <div className="text-center text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]">
+                        <PlusIcon />
+                        <p className="mt-2 text-sm">Add Slide</p>
+                      </div>
+                    </button>
+                  </div>
                   {/* Right spacer to allow centering of last slide */}
                   <div className="flex-shrink-0 w-[400px]"></div>
                 </>
