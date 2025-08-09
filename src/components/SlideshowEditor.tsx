@@ -94,6 +94,12 @@ export default function SlideshowEditor() {
   const [canvasReadyStates, setCanvasReadyStates] = useState<{[key: string]: boolean}>({});
   const [isDeletingSlide, setIsDeletingSlide] = useState(false);
   const [slideRenderKey, setSlideRenderKey] = useState(0);
+  const [isEditorCleared, setIsEditorCleared] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('editorCleared') === 'true';
+    }
+    return false;
+  });
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const [sidebarMode, setSidebarMode] = useState<'create' | 'drafts'>(() => {
     const mode = searchParams.get('mode');
@@ -123,6 +129,18 @@ export default function SlideshowEditor() {
       setSidebarMode(prev => (prev !== modeParam ? (modeParam as 'drafts' | 'create') : prev));
     }
   }, [modeParam]);
+
+  // Persist cleared state across reloads within the session
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (isEditorCleared) {
+        sessionStorage.setItem('editorCleared', 'true');
+      } else {
+        sessionStorage.removeItem('editorCleared');
+      }
+    } catch {}
+  }, [isEditorCleared]);
 
   const parseAspectRatio = (ratio: string) => {
     const [w, h] = ratio.split(':').map(Number);
@@ -417,7 +435,7 @@ export default function SlideshowEditor() {
 
   // Set default selected slideshow and slide when slideshows load
   useEffect(() => {
-    if (displaySlideshows.length > 0 && !selectedSlideshowId) {
+    if (displaySlideshows.length > 0 && !selectedSlideshowId && !isEditorCleared) {
       const firstSlideshow = displaySlideshows[0];
       setSelectedSlideshowId(firstSlideshow.id);
       if (firstSlideshow.slides.length > 0) {
@@ -427,7 +445,7 @@ export default function SlideshowEditor() {
         centerSlide(firstSlideshow.slides[0].id, 100);
       }
     }
-  }, [displaySlideshows, selectedSlideshowId]);
+  }, [displaySlideshows, selectedSlideshowId, isEditorCleared]);
 
 
 
@@ -1801,16 +1819,26 @@ export default function SlideshowEditor() {
 
   const handleRender = async () => {
     if (!currentSlideshow) return;
-    setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: 0 }));
+    const slideshowToRender = currentSlideshow; // snapshot to avoid selection changes affecting render
+    setRenderProgress(prev => ({ ...prev, [slideshowToRender.id]: 0 }));
+
+    // Immediately switch the editor to an empty state so the user can't edit the one being rendered
+    setSelectedSlideshowId('');
+    setSelectedSlideId('');
+    updateSelectedTextObject(null);
+    setIsEditorCleared(true);
+    // Dispose any active canvases to free resources
+    Object.keys(canvasRefs.current).forEach(id => disposeCanvas(id));
+    Object.keys(miniCanvasRefs.current).forEach(id => disposeMiniCanvas(id));
 
     try {
-      const getSlideCanvasForRender = createGetSlideCanvas(currentSlideshow);
+      const getSlideCanvasForRender = createGetSlideCanvas(slideshowToRender);
 
       await queueSlideshowRender(
-        currentSlideshow.id,
+        slideshowToRender.id,
         getSlideCanvasForRender,
         completed =>
-          setRenderProgress(prev => ({ ...prev, [currentSlideshow.id]: completed }))
+          setRenderProgress(prev => ({ ...prev, [slideshowToRender.id]: completed }))
       );
 
       // Refresh the slideshows data to show the newly rendered video
@@ -1818,12 +1846,14 @@ export default function SlideshowEditor() {
 
       // Clear localSlideshows to force using the fresh data from the refetch
       setLocalSlideshows([]);
+      // Keep editor in cleared state after render completes
+      setIsEditorCleared(true);
     } catch (err) {
       console.error('Failed to render slideshow:', err);
     } finally {
       setRenderProgress(prev => {
         const updated = { ...prev };
-        delete updated[currentSlideshow.id];
+        delete updated[slideshowToRender.id];
         return updated;
       });
     }
@@ -2033,10 +2063,11 @@ export default function SlideshowEditor() {
             
             {/* Horizontal Slides Row - Container with fixed width */}
             <div className="absolute inset-0 flex items-center gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth" ref={scrollContainerRef}>
-              {/* Left spacer to allow centering of first slide */}
-              <div className="flex-shrink-0 w-[500px]"></div>
-              
-              {currentSlideshow?.slides.map((slide, index) => (
+              {currentSlideshow && !isEditorCleared ? (
+                <>
+                  {/* Left spacer to allow centering of first slide */}
+                  <div className="flex-shrink-0 w-[500px]"></div>
+                  {currentSlideshow.slides.map((slide, index) => (
                 <div key={`${slide.id}-${slideRenderKey}`} className="flex-shrink-0 flex items-center justify-center relative" data-slide-id={slide.id}>
                   {/* Save Button - Only shown for selected slide with unsaved changes */}
                   {selectedSlideId === slide.id && hasUnsavedChanges && (
@@ -2157,24 +2188,20 @@ export default function SlideshowEditor() {
                     </div>
                   </button>
                 </div>
-              ))}
-
-              {/* Add Slide Button */}
-              <div className="flex-shrink-0 flex items-center justify-center">
-                <button
-                  onClick={handleAddSlide}
-                  className="bg-[var(--color-bg-secondary)] border-4 border-dashed border-[var(--color-border)] rounded-2xl flex items-center justify-center hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] transition-all group"
-                  style={{ width: MINI_CANVAS_WIDTH, height: MINI_CANVAS_HEIGHT }}
-                >
-                  <div className="text-center text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]">
-                    <PlusIcon />
-                    <p className="mt-2 text-sm">Add Slide</p>
+                  ))}
+                  {/* Right spacer to allow centering of last slide */}
+                  <div className="flex-shrink-0 w-[400px]"></div>
+                </>
+              ) : (
+                <div className="w-full flex items-center justify-center">
+                  <div className="text-center text-[var(--color-text-muted)]">
+                    <p className="text-lg font-medium">Create a new slideshow to start editing</p>
+                    <p className="text-sm mt-2">Use the button in the left panel to make a new draft.</p>
                   </div>
-                </button>
-              </div>
+                </div>
+              )}
+
               
-              {/* Right spacer to allow centering of last slide */}
-              <div className="flex-shrink-0 w-[400px]"></div>
             </div>
           </div>
         </div>
