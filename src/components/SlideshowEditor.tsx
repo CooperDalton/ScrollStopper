@@ -177,6 +177,7 @@ export default function SlideshowEditor() {
     stroke: 'black',
     charSpacing: -40, // Decreased letter spacing
     lineHeight: 1.0, // Reduced line spacing
+    fontSize,
   });
 
   // Track selected text object for resize controls
@@ -1373,7 +1374,7 @@ export default function SlideshowEditor() {
       // When users resize by dragging corners, Fabric.js applies scaleX/scaleY
       const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
       const previousSize = textData.size;
-      textData.size = Math.round(effectiveFontSize);
+      textData.size = effectiveFontSize;
       
       // Apply angle snapping for 90-degree increments
       const originalAngle = fabricText.angle || 0;
@@ -1436,7 +1437,7 @@ export default function SlideshowEditor() {
         fabricImage.set('angle', snappedAngle);
       }
       
-      overlayData.size = Math.round(((fabricImage as any).scaleX || 1) * 100);
+      overlayData.size = ((fabricImage as any).scaleX || 1) * 100;
       
       // Update local state to persist changes when switching slides
       updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
@@ -1673,20 +1674,26 @@ export default function SlideshowEditor() {
     }
   };
 
-  const createGetSlideCanvas = (slideshow: Slideshow) => async (slideId: string) => {
-    // If canvas already exists in refs, return it
-    if (canvasRefs.current[slideId]) {
+  const createGetSlideCanvas = (
+    slideshow: Slideshow,
+    targetWidth = CANVAS_WIDTH
+  ) => async (slideId: string) => {
+    if (targetWidth === CANVAS_WIDTH && canvasRefs.current[slideId]) {
       return canvasRefs.current[slideId];
     }
 
+    const aspect = parseAspectRatio(slideshow.aspect_ratio);
+    const scaleFactor = targetWidth / CANVAS_WIDTH;
+    const targetHeight = Math.round(targetWidth / aspect);
+
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = CANVAS_WIDTH;
-    tempCanvas.height = CANVAS_HEIGHT;
+    tempCanvas.width = targetWidth;
+    tempCanvas.height = targetHeight;
 
     try {
       const canvas = new fabric.Canvas(tempCanvas, {
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
+        width: targetWidth,
+        height: targetHeight,
         backgroundColor: '#ffffff'
       });
 
@@ -1697,19 +1704,20 @@ export default function SlideshowEditor() {
       }
 
       if (slide.backgroundImage) {
-        const img = await loadFabricImage(slide.backgroundImage, { crossOrigin: 'anonymous' });
+        const img = await loadFabricImage(slide.backgroundImage, {
+          crossOrigin: 'anonymous'
+        });
         img.set({ selectable: false, evented: false, isBackground: true });
-        scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+        scaleImageToFillCanvas(img, targetWidth, targetHeight);
         canvas.add(img);
       }
 
       if (slide.texts && slide.texts.length > 0) {
         for (const textData of slide.texts) {
           const fabricText = new fabric.IText(textData.text, {
-            ...getTextStyling(textData.size),
-            left: textData.position_x,
-            top: textData.position_y,
-            fontSize: textData.size,
+            ...getTextStyling(textData.size * scaleFactor),
+            left: textData.position_x * scaleFactor,
+            top: textData.position_y * scaleFactor,
             angle: textData.rotation,
             textId: textData.id
           });
@@ -1720,15 +1728,19 @@ export default function SlideshowEditor() {
       if (slide.overlays && slide.overlays.length > 0) {
         for (const overlayData of slide.overlays) {
           if (overlayData.imageUrl) {
-            const img = await loadFabricImage(overlayData.imageUrl, { crossOrigin: 'anonymous' });
+            const img = await loadFabricImage(overlayData.imageUrl, {
+              crossOrigin: 'anonymous'
+            });
             img.set({
-              left: overlayData.position_x,
-              top: overlayData.position_y,
-              scaleX: overlayData.size / 100,
-              scaleY: overlayData.size / 100,
+              left: overlayData.position_x * scaleFactor,
+              top: overlayData.position_y * scaleFactor,
+              scaleX: (overlayData.size / 100) * scaleFactor,
+              scaleY: (overlayData.size / 100) * scaleFactor,
               angle: overlayData.rotation,
               selectable: false,
-              evented: false
+              evented: false,
+              originX: 'center',
+              originY: 'center'
             });
             canvas.add(img);
           }
@@ -1767,7 +1779,7 @@ export default function SlideshowEditor() {
       const run = async () => {
         setRenderProgress(prev => ({ ...prev, [id]: 0 }));
         try {
-          const getSlideCanvas = createGetSlideCanvas(slideshow);
+          const getSlideCanvas = createGetSlideCanvas(slideshow, 1080);
           await queueSlideshowRender(
             id,
             getSlideCanvas,
@@ -1804,7 +1816,7 @@ export default function SlideshowEditor() {
     Object.keys(miniCanvasRefs.current).forEach(id => disposeMiniCanvas(id));
 
     try {
-      const getSlideCanvasForRender = createGetSlideCanvas(slideshowToRender);
+      const getSlideCanvasForRender = createGetSlideCanvas(slideshowToRender, 1080);
 
       await queueSlideshowRender(
         slideshowToRender.id,

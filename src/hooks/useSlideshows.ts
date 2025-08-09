@@ -78,7 +78,8 @@ const getTextStyling = (fontSize: number = 24) => ({
   originY: 'center' as const,
   stroke: 'black',
   charSpacing: -40,
-  lineHeight: 1.0
+  lineHeight: 1.0,
+  fontSize
 })
 
 const scaleImageToFillCanvas = (
@@ -108,12 +109,16 @@ const scaleImageToFillCanvas = (
   })
 }
 
-const createGetSlideCanvas = (slideshow: Slideshow) => async (
-  slideId: string
-): Promise<fabric.Canvas | undefined> => {
+const BASE_CANVAS_WIDTH = 300
+
+const createGetSlideCanvas = (
+  slideshow: Slideshow,
+  targetWidth = BASE_CANVAS_WIDTH
+) => async (slideId: string): Promise<fabric.Canvas | undefined> => {
   const aspectRatio = parseAspectRatio(slideshow.aspect_ratio)
-  const CANVAS_WIDTH = 300
+  const CANVAS_WIDTH = targetWidth
   const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio)
+  const scaleFactor = targetWidth / BASE_CANVAS_WIDTH
 
   const tempCanvasEl = document.createElement('canvas')
   tempCanvasEl.width = CANVAS_WIDTH
@@ -141,10 +146,9 @@ const createGetSlideCanvas = (slideshow: Slideshow) => async (
     if (slide.texts) {
       for (const textData of slide.texts) {
         const fabricText = new fabric.IText(textData.text, {
-          ...getTextStyling(textData.size),
-          left: textData.position_x,
-          top: textData.position_y,
-          fontSize: textData.size,
+          ...getTextStyling(textData.size * scaleFactor),
+          left: textData.position_x * scaleFactor,
+          top: textData.position_y * scaleFactor,
           angle: textData.rotation,
           textId: textData.id
         })
@@ -159,10 +163,10 @@ const createGetSlideCanvas = (slideshow: Slideshow) => async (
             crossOrigin: 'anonymous'
           })
           img.set({
-            left: overlayData.position_x,
-            top: overlayData.position_y,
-            scaleX: overlayData.size / 100,
-            scaleY: overlayData.size / 100,
+            left: overlayData.position_x * scaleFactor,
+            top: overlayData.position_y * scaleFactor,
+            scaleX: (overlayData.size / 100) * scaleFactor,
+            scaleY: (overlayData.size / 100) * scaleFactor,
             angle: overlayData.rotation,
             originX: 'center',
             originY: 'center',
@@ -245,7 +249,7 @@ export function useSlideshows() {
       // Don't throw here — allow deferred resolution after fetch
       if (s) {
         slideshowForJob = s
-        getCanvas = createGetSlideCanvas(s)
+        getCanvas = createGetSlideCanvas(s, 1080)
       }
     }
 
@@ -598,10 +602,10 @@ export function useSlideshows() {
         const textsToInsert = texts.map(text => ({
           slide_id: slideId,
           text: text.text,
-          position_x: Math.round(text.position_x),
-          position_y: Math.round(text.position_y),
-          size: Math.round(text.size),
-          rotation: Math.round(text.rotation),
+          position_x: text.position_x,
+          position_y: text.position_y,
+          size: text.size,
+          rotation: text.rotation,
           font: text.font
         }))
 
@@ -735,10 +739,10 @@ export function useSlideshows() {
         const overlayInserts = overlays.map(overlay => ({
           slide_id: slideId,
           image_id: overlay.image_id,
-          position_x: Math.round(overlay.position_x),
-          position_y: Math.round(overlay.position_y),
-          rotation: Math.round(overlay.rotation),
-          size: Math.round(overlay.size)
+          position_x: overlay.position_x,
+          position_y: overlay.position_y,
+          rotation: overlay.rotation,
+          size: overlay.size
         }))
 
         const { data: insertedOverlays, error: insertError } = await supabase
@@ -1162,7 +1166,8 @@ export function useSlideshows() {
         
         console.log(`Canvas found for slide ${slide.id}, rendering...`)
 
-        const multiplier = 1080 / 300
+        const targetWidth = 1080
+        const multiplier = targetWidth / canvas.getWidth()
         const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
         const file = await (await fetch(dataUrl)).blob()
         const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
