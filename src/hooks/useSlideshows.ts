@@ -599,31 +599,36 @@ export function useSlideshows() {
 
       // Then insert the new texts if there are any
       if (texts.length > 0) {
+        const toInt = (value: unknown) => {
+          const n = Number(value)
+          return Number.isFinite(n) ? Math.round(n) : 0
+        }
+
         const textsToInsert = texts.map(text => ({
           slide_id: slideId,
           text: text.text,
-          position_x: text.position_x,
-          position_y: text.position_y,
-          size: text.size,
-          rotation: text.rotation,
+          position_x: toInt(text.position_x),
+          position_y: toInt(text.position_y),
+          size: toInt(text.size),
+          rotation: toInt(text.rotation),
           font: text.font
         }))
 
-        const { data: insertedTexts, error: insertError } = await supabase
+        // Do not call .select() here to avoid requiring SELECT RLS permissions
+        const { error: insertError } = await supabase
           .from('slide_texts')
           .insert(textsToInsert)
-          .select()
 
         if (insertError) throw insertError
 
-        // Update local state with the inserted texts (which have IDs)
+        // Update local state using the provided texts (client-side ids are fine)
         setSlideshows(prev => prev.map(slideshow => ({
           ...slideshow,
           slides: slideshow.slides.map(slide => {
             if (slide.id === slideId) {
               return {
                 ...slide,
-                texts: insertedTexts
+                texts: texts
               }
             }
             return slide
@@ -652,7 +657,12 @@ export function useSlideshows() {
 
       return true
     } catch (err) {
-      console.error('Error saving slide texts:', err)
+      const anyErr = err as any
+      console.error('Error saving slide texts:', anyErr?.message || anyErr, {
+        code: anyErr?.code,
+        details: anyErr?.details,
+        hint: anyErr?.hint
+      })
       const errorMessage = err instanceof Error ? err.message : 'Failed to save slide texts'
       setError(errorMessage)
       throw new Error(errorMessage)

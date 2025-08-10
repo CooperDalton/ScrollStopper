@@ -52,8 +52,8 @@ export function useImages(collectionId: string | null) {
   const uploadImages = async (files: File[], onProgress?: (completed: number, total: number, current?: string) => void) => {
     if (!collectionId) throw new Error('No collection selected');
     
-    const results = [];
-    const errors = [];
+    const results: Image[] = [];
+    const errors: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];

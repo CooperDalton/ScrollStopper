@@ -2016,9 +2016,9 @@ export default function SlideshowEditor() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {draftGroups.map(({ label, slides }) => (
+                    {draftGroups.map(({ label, slides }, index) => (
                       <div key={label} className="space-y-3">
-                        <hr className="border-[var(--color-border)]" />
+                        {index > 0 && <hr className="border-[var(--color-border)]" />}
                         <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
                         <div className="grid grid-cols-3 gap-2">
                           {slides.map((slideshow: Slideshow) => (
@@ -2028,7 +2028,12 @@ export default function SlideshowEditor() {
                                 // Auto-save current slide if it has unsaved changes before switching slideshows
                                 if (hasUnsavedChanges && selectedSlideId && currentSlide) {
                                   console.log('Auto-saving before switching slideshows...');
-                                  await autoSaveSlide(selectedSlideId, currentSlide);
+                                  try {
+                                    await autoSaveSlide(selectedSlideId, currentSlide);
+                                  } catch (err) {
+                                    console.error('Failed to auto-save before switching slideshows:', err);
+                                    // Continue navigation even if auto-save fails to avoid trapping the user
+                                  }
                                 }
 
                                 setSelectedSlideshowId(slideshow.id);
