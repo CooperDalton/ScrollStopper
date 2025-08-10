@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import React from 'react';
 
 // Icon components
 const ProductsIcon = () => (
@@ -53,6 +54,32 @@ const navigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [proEnabled, setProEnabled] = React.useState<boolean>(false);
+
+  // Initialize from localStorage and sync across tabs
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('proEnabled');
+      setProEnabled(saved === 'true');
+    } catch (_) {
+      // noop
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'proEnabled') {
+        setProEnabled(e.newValue === 'true');
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const togglePro = () => {
+    setProEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem('proEnabled', String(next)); } catch (_) {}
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-screen w-64 flex-col bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)]">
@@ -113,17 +140,31 @@ export default function Sidebar() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-[var(--color-text-muted)]">Plan</span>
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[var(--color-primary)] text-white">
-              Free
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${proEnabled ? 'bg-emerald-600' : 'bg-[var(--color-primary)]'} text-white`}>
+              {proEnabled ? 'Pro (test)' : 'Free'}
             </span>
           </div>
         </div>
 
-        {/* Settings Button */}
-        <button className="flex items-center gap-3 w-full px-3 py-3 rounded-xl text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-all duration-200">
-          <SettingsIcon />
-          Settings
-        </button>
+        {/* Pro test toggle */}
+        <div className="flex items-center justify-between w-full px-3 py-3 rounded-xl text-sm transition-all duration-200 bg-[var(--color-bg-tertiary)]">
+          <div className="flex items-center gap-3 text-[var(--color-text)]">
+            <SettingsIcon />
+            <div className="flex flex-col">
+              <span className="font-medium">Pro features (test)</span>
+              <span className="text-xs text-[var(--color-text-muted)]">Enable AI image processing</span>
+            </div>
+          </div>
+          <button
+            aria-label="Toggle Pro test mode"
+            onClick={togglePro}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${proEnabled ? 'bg-emerald-500' : 'bg-[var(--color-border)]'}`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${proEnabled ? 'translate-x-5' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
       </div>
     </div>
   );

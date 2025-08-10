@@ -281,3 +281,34 @@ export function getImageUrl(filePath: string) {
     return ''
   }
 } 
+
+export interface ImageAIDescriptionResult {
+  short_description: string
+  long_description: string
+  categories: string[]
+  objects: string[]
+}
+
+export async function updateImageAIData(
+  imageId: string,
+  ai: ImageAIDescriptionResult
+) {
+  try {
+    const { data, error } = await supabase
+      .from('images')
+      .update({
+        ai_json: ai as unknown as Record<string, unknown>,
+        ai_description: ai.long_description,
+        ai_summary: ai.short_description,
+      })
+      .eq('id', imageId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return { image: data as Image, error: null }
+  } catch (error) {
+    console.error('Error updating image AI data:', error)
+    return { image: null, error: error as Error }
+  }
+}

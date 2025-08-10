@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR, { mutate as mutateGlobal } from 'swr';
-import { Image, getCollectionImages, uploadImageToCollection, deleteImage } from '@/lib/images';
+import { Image, getCollectionImages, uploadImageToCollection, deleteImage, getImageUrl, updateImageAIData, ImageAIDescriptionResult } from '@/lib/images';
 
 export function useImages(collectionId: string | null) {
   const { data, error, isLoading, mutate } = useSWR<{ images: Image[], error: null }>(
@@ -46,6 +46,37 @@ export function useImages(collectionId: string | null) {
     // Revalidate images list and collections to ensure consistency
     mutate();
     mutateGlobal('collections');
+
+    // If Pro is toggled on (client test), call AI describe endpoint and persist
+    try {
+      const proEnabled = typeof window !== 'undefined' && localStorage.getItem('proEnabled') === 'true';
+      if (proEnabled && result.image) {
+        const storagePath = result.image.storage_path || result.image.file_path || '';
+        if (storagePath) {
+          const imageUrl = getImageUrl(storagePath);
+          if (imageUrl) {
+            const resp = await fetch('/api/images/describe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrl }),
+            });
+            if (resp.ok) {
+              const ai = (await resp.json()) as ImageAIDescriptionResult;
+              console.log('AI describe (single upload):', ai);
+              await updateImageAIData(result.image.id, ai);
+              // Revalidate to include AI fields
+              mutate();
+            } else {
+              const errText = await resp.text();
+              console.error('AI describe failed (single upload):', resp.status, errText);
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Best-effort; ignore for MVP
+    }
+
     return result.image;
   };
 
@@ -102,6 +133,40 @@ export function useImages(collectionId: string | null) {
     // Revalidate the images list and collections to ensure consistency with backend
     mutate();
     mutateGlobal('collections');
+
+    // Optionally process AI for each uploaded image when Pro test is enabled
+    try {
+      const proEnabled = typeof window !== 'undefined' && localStorage.getItem('proEnabled') === 'true';
+      if (proEnabled && results.length > 0) {
+        for (const img of results) {
+          const storagePath = img.storage_path || img.file_path || '';
+          if (!storagePath) continue;
+          const imageUrl = getImageUrl(storagePath);
+          if (!imageUrl) continue;
+          try {
+            const resp = await fetch('/api/images/describe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrl }),
+            });
+            if (resp.ok) {
+              const ai = (await resp.json()) as ImageAIDescriptionResult;
+              console.log('AI describe (batch upload):', ai);
+              await updateImageAIData(img.id, ai);
+            } else {
+              const errText = await resp.text();
+              console.error('AI describe failed (batch upload):', resp.status, errText);
+            }
+          } catch (_) {
+            // ignore individual failures
+          }
+        }
+        // Revalidate once after processing
+        mutate();
+      }
+    } catch (_) {
+      // ignore
+    }
 
     if (errors.length > 0) {
       throw new Error(`Some uploads failed:\n${errors.join('\n')}`);
