@@ -126,6 +126,7 @@ export default function SlideshowEditor() {
   const [previewSlideshowId, setPreviewSlideshowId] = useState<string | null>(null);
   const [isOpeningModal, setIsOpeningModal] = useState(false);
   const [deletingSlideshowId, setDeletingSlideshowId] = useState<string | null>(null);
+  const [deletingDraftIds, setDeletingDraftIds] = useState<Set<string>>(new Set());
 
   const updateModeInUrl = (mode: 'create' | 'drafts') => {
     const params = new URLSearchParams(searchParams.toString());
@@ -385,6 +386,40 @@ export default function SlideshowEditor() {
   const completedSlideshows = React.useMemo(() => {
     return displaySlideshows.filter(s => s.status === 'completed');
   }, [displaySlideshows]);
+
+  const SmallTrashIcon = () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H9a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+
+  const handleDeleteDraft = async (
+    e: React.MouseEvent,
+    slideshowId: string
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const confirmed = window.confirm('Delete this draft? This cannot be undone.');
+    if (!confirmed) return;
+    setDeletingDraftIds(prev => new Set(prev).add(slideshowId));
+    try {
+      await deleteSlideshow(slideshowId);
+      if (selectedSlideshowId === slideshowId) {
+        setSelectedSlideshowId('');
+        setSelectedSlideId('');
+        setIsEditorCleared(true);
+      }
+    } catch (err) {
+      console.error('Failed to delete draft slideshow:', err);
+      alert('Failed to delete draft. Please try again.');
+    } finally {
+      setDeletingDraftIds(prev => {
+        const copy = new Set(prev);
+        copy.delete(slideshowId);
+        return copy;
+      });
+    }
+  };
 
   const aspectRatio = parseAspectRatio(currentSlideshow?.aspect_ratio || '9:16');
   const CANVAS_WIDTH = 300;
@@ -2022,8 +2057,26 @@ export default function SlideshowEditor() {
                         <p className="text-sm font-semibold text-[var(--color-text)]">{label}</p>
                         <div className="grid grid-cols-3 gap-2">
                           {slides.map((slideshow: Slideshow) => (
-                            <button
+                            <div
                               key={slideshow.id}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  // Auto-save current slide if it has unsaved changes before switching slideshows
+                                  if (hasUnsavedChanges && selectedSlideId && currentSlide) {
+                                    try {
+                                      await autoSaveSlide(selectedSlideId, currentSlide);
+                                    } catch {}
+                                  }
+                                  setSelectedSlideshowId(slideshow.id);
+                                  setSelectedSlideId(slideshow.slides[0]?.id || '');
+                                  if (slideshow.slides.length > 0) {
+                                    centerSlide(slideshow.slides[0].id, 100);
+                                  }
+                                }
+                              }}
                               onClick={async () => {
                                 // Auto-save current slide if it has unsaved changes before switching slideshows
                                 if (hasUnsavedChanges && selectedSlideId && currentSlide) {
@@ -2044,20 +2097,43 @@ export default function SlideshowEditor() {
                                   centerSlide(slideshow.slides[0].id, 100);
                                 }
                               }}
-                              className="text-left"
+                              className="text-left cursor-pointer"
                             >
-                              {slideshow.slides[0]?.backgroundImage ? (
-                                <img
-                                  src={slideshow.slides[0].backgroundImage}
-                                  alt="Draft thumbnail"
-                                  className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]"
-                                />
-                              ) : (
-                                <div className="w-full h-24 flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
-                                  No Image
-                                </div>
-                              )}
-                            </button>
+                              <div className="relative group">
+                                {slideshow.slides[0]?.backgroundImage ? (
+                                  <img
+                                    src={slideshow.slides[0].backgroundImage}
+                                    alt="Draft thumbnail"
+                                    className="w-full h-24 object-cover rounded-xl border border-[var(--color-border)]"
+                                  />
+                                ) : (
+                                  <div className="w-full h-24 flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
+                                    No Image
+                                  </div>
+                                )}
+
+                                {/* Delete draft button (hover) */}
+                                <button
+                                  onClick={(e) => handleDeleteDraft(e, slideshow.id)}
+                                  disabled={deletingDraftIds.has(slideshow.id)}
+                                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                                  title="Delete draft"
+                                >
+                                  {deletingDraftIds.has(slideshow.id) ? (
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <SmallTrashIcon />
+                                  )}
+                                </button>
+
+                                {/* Deleting overlay */}
+                                {deletingDraftIds.has(slideshow.id) && (
+                                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-xl">
+                                    <div className="text-white text-sm font-medium">Deleting...</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
