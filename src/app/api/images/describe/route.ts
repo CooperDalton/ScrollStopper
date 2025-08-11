@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateObject } from 'ai'
+import { generateObject, type ModelMessage } from 'ai'
 import { z } from 'zod'
 
 export const runtime = 'edge'
 
 const schema = z.object({
-  short_description: z.string().describe('A 1 sentence description of the image for product showcase slideshows'),
-  long_description: z.string().describe('A 3-5 sentence description of the image for product showcase slideshows'),
+  short_description: z.string().describe('A 1 sentence description of the image. Be factual so an LLM understands the image.'),
+  long_description: z.string().describe('A 3-5 sentence description of the image. Be factua so an LLM understands the image. If people present describe them in detail.'),
   categories: z.array(z.string()).describe('List of high-level tags for the image'),
   objects: z.array(z.string()).describe('List of prominent objects in the image'),
 })
@@ -46,20 +46,21 @@ Return a concise JSON with:
 - objects: list of prominent objects (1-10)
 Be factual. Do not mention watermarks. Do not include brand names unless clearly visible.`
 
+    const messages: ModelMessage[] = [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          { type: 'text' as const, text: 'Describe this image following the schema.' },
+          { type: 'image' as const, image: imageUrl },
+        ],
+      },
+    ]
+
     const { object } = await (generateObject as any)({
       model: openai('gpt-4o'),
-      mode: 'json',
       schema,
-      messages: [
-        { role: 'system', content: [{ type: 'text', text: systemPrompt }] },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Describe this image following the schema.' },
-            { type: 'image', image: imageUrl },
-          ],
-        },
-      ],
+      messages,
     })
     console.log('AI image describe result:', object)
     return NextResponse.json(object)

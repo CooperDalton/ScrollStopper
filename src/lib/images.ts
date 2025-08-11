@@ -21,6 +21,8 @@ export interface Image {
   width?: number | null
   height?: number | null
   aspect_ratio?: string | null
+  // JSON metadata bag for extensible fields
+  metadata?: Record<string, unknown> | null
   // Legacy AI fields may exist on old schema; keep optional for typing safety
   ai_description?: string | null
   ai_summary?: string | null
@@ -294,13 +296,31 @@ export async function updateImageAIData(
   ai: ImageAIDescriptionResult
 ) {
   try {
+    // Fetch existing metadata to merge safely
+    const { data: existing, error: fetchError } = await supabase
+      .from('images')
+      .select('id, metadata')
+      .eq('id', imageId)
+      .single()
+
+    if (fetchError) throw fetchError
+
+    const existingMetadata = (existing?.metadata as Record<string, unknown> | null) || {}
+    const mergedMetadata: Record<string, unknown> = {
+      ...existingMetadata,
+      short_description: ai.short_description,
+      long_description: ai.long_description,
+      categories: ai.categories,
+      objects: ai.objects,
+    }
+    // Remove legacy nested `ai` key if present
+    if ('ai' in mergedMetadata) {
+      delete (mergedMetadata as any).ai
+    }
+
     const { data, error } = await supabase
       .from('images')
-      .update({
-        ai_json: ai as unknown as Record<string, unknown>,
-        ai_description: ai.long_description,
-        ai_summary: ai.short_description,
-      })
+      .update({ metadata: mergedMetadata })
       .eq('id', imageId)
       .select()
       .single()
