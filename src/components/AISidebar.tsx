@@ -3,7 +3,7 @@
 import React from 'react';
 import { useProducts } from '@/hooks/useProducts';
 
-export default function AISidebar() {
+export default function AISidebar({ onGenerate }: { onGenerate?: () => void }) {
   const { products, isLoading, isError } = useProducts();
   const [prompt, setPrompt] = React.useState('');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('');
@@ -96,7 +96,7 @@ export default function AISidebar() {
       <div className="p-4 mt-auto border-t border-[var(--color-border)]">
         <button
           type="button"
-          onClick={() => {/* no-op for now */}}
+          onClick={() => { onGenerate?.(); }}
           className="w-full p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Generate
