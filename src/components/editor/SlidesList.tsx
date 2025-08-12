@@ -19,6 +19,7 @@ export interface SlidesListProps {
   initializingMiniRefs: React.MutableRefObject<Set<string>>;
   slideRenderKey: number;
   renderOverlays?: (slideId: string) => React.ReactNode;
+  getThumbnailSrc?: (slideId: string) => string | undefined;
 }
 
 export default function SlidesList({
@@ -34,7 +35,8 @@ export default function SlidesList({
   initializingRefs,
   initializingMiniRefs,
   slideRenderKey,
-  renderOverlays
+  renderOverlays,
+  getThumbnailSrc
 }: SlidesListProps) {
   return (
     <>
@@ -55,6 +57,7 @@ export default function SlidesList({
             slideRenderKey={slideRenderKey}
             onClick={() => onSelect(slide.id)}
             borderClassName={''}
+            thumbnailSrc={selectedSlideId === slide.id ? undefined : getThumbnailSrc?.(slide.id)}
           />
         </div>
       ))}

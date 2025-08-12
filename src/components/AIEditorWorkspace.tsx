@@ -37,6 +37,63 @@ export default function AIEditorWorkspace() {
   const initializingMiniCanvasesRef = React.useRef<Set<string>>(new Set());
   const scrollContainerRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const verticalScrollRef = React.useRef<HTMLDivElement>(null);
+  // Thumbnail store for unselected slides
+  const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
+  const [verticalPad, setVerticalPad] = React.useState<number>(0);
+
+  const createPlaceholderThumbnail = React.useCallback((slideId: string) => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+    } catch {}
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT]);
+
+  const ensureThumbnailsForSlides = React.useCallback((slideIds: string[]) => {
+    setTimeout(() => {
+      slideIds.forEach((id) => {
+        setThumbnails(prev => {
+          if (prev[id]) return prev;
+          // Create placeholder if no thumbnail exists yet
+          const canvas = document.createElement('canvas');
+          canvas.width = CANVAS_WIDTH;
+          canvas.height = CANVAS_HEIGHT;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#f5f5f5';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          }
+          const dataUrl = canvas.toDataURL('image/png');
+          return { ...prev, [id]: dataUrl };
+        });
+      });
+    }, 0);
+  }, [CANVAS_WIDTH, CANVAS_HEIGHT]);
+
+  // Observe vertical container size to compute top/bottom padding that enables perfect centering
+  React.useEffect(() => {
+    const el = verticalScrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = el.clientHeight || 0;
+      setVerticalPad(Math.max(0, Math.floor(h / 2)));
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      try { ro.disconnect(); } catch {}
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   // Helpers
   const centerSlide = (slideId: string, delay: number = 50) => {
@@ -74,6 +131,11 @@ export default function AIEditorWorkspace() {
   const disposeCanvas = (slideId: string) => {
     const c = canvasRefs.current[slideId];
     if (c) {
+      // Capture a fresh thumbnail before disposing, if possible
+      try {
+        const dataUrl = c.toDataURL({ format: 'png' });
+        setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+      } catch {}
       try { c.dispose(); } catch { try { c.clear(); } catch {} }
       delete canvasRefs.current[slideId];
       delete canvasElementRefs.current[slideId];
@@ -83,6 +145,11 @@ export default function AIEditorWorkspace() {
   const disposeMiniCanvas = (slideId: string) => {
     const c = miniCanvasRefs.current[slideId];
     if (c) {
+      // Capture thumbnail from mini canvas as well for redundancy
+      try {
+        const dataUrl = c.toDataURL({ format: 'png' });
+        setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+      } catch {}
       try { c.dispose(); } catch { try { c.clear(); } catch {} }
       delete miniCanvasRefs.current[slideId];
       delete miniCanvasElementRefs.current[slideId];
@@ -111,6 +178,11 @@ export default function AIEditorWorkspace() {
       canvasRefs.current[slideId] = canvas;
       canvasElementRefs.current[slideId] = canvasElement;
       canvas.renderAll();
+      // After first render, capture a thumbnail for when this slide becomes mini
+      try {
+        const dataUrl = canvas.toDataURL({ format: 'png' });
+        setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+      } catch {}
     } catch (err) {
       console.error('Failed to initialize canvas:', err);
       disposeCanvas(slideId);
@@ -133,6 +205,11 @@ export default function AIEditorWorkspace() {
       miniCanvasRefs.current[slideId] = canvas;
       miniCanvasElementRefs.current[slideId] = canvasElement;
       canvas.renderAll();
+      // Immediately capture a thumbnail to avoid white/invisible state
+      try {
+        const dataUrl = canvas.toDataURL({ format: 'png' });
+        setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+      } catch {}
     } catch (err) {
       console.error('Failed to initialize mini canvas:', err);
       disposeMiniCanvas(slideId);
@@ -161,6 +238,7 @@ export default function AIEditorWorkspace() {
     setSelectedSlideId(newSlides[0].id);
     setSlideRenderKey(prev => prev + 1);
     setIsEditorCleared(false);
+    ensureThumbnailsForSlides(newSlides.map(s => s.id));
     centerSlide(newSlides[0].id, 100);
   };
 
@@ -170,6 +248,12 @@ export default function AIEditorWorkspace() {
       if (id !== slideId) disposeCanvas(id);
     });
     if (miniCanvasRefs.current[slideId]) disposeMiniCanvas(slideId);
+    // Clear old thumbnail for selected slide to encourage fresh capture on blur
+    setThumbnails(prev => {
+      const copy = { ...prev };
+      delete copy[slideId];
+      return copy;
+    });
     setSelectedSlideId(slideId);
     centerSlide(slideId, 50);
   };
@@ -192,6 +276,7 @@ export default function AIEditorWorkspace() {
     setSelectedSlideId(newSlides[0].id);
     setSlideRenderKey(prev => prev + 1);
     setIsEditorCleared(false);
+    ensureThumbnailsForSlides(newSlides.map(s => s.id));
     // Center after DOM updates
     setTimeout(() => centerSlide(newSlides[0].id, 100), 0);
   };
@@ -209,10 +294,13 @@ export default function AIEditorWorkspace() {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
             {/* Single seamless scrollable area handling both horizontal and vertical centering */}
-            <div ref={verticalScrollRef} className="absolute inset-0 overflow-auto">
-              <div className="min-h-full min-w-full flex flex-col gap-0 p-6">
-                {rows.length > 0 && !isEditorCleared ? (
-                  rows.map((rowSlides, idx) => (
+            <div ref={verticalScrollRef} className="absolute inset-0 overflow-auto scrollbar-hide">
+              {rows.length > 0 && !isEditorCleared ? (
+                <div
+                  className="min-h-full min-w-full flex flex-col gap-0 px-6"
+                  style={{ paddingTop: verticalPad, paddingBottom: verticalPad }}
+                >
+                  {rows.map((rowSlides, idx) => (
                     <SlidesRow
                       key={`row-${idx}`}
                       absolute={false}
@@ -235,16 +323,17 @@ export default function AIEditorWorkspace() {
                         initializingRefs={initializingCanvasesRef}
                         initializingMiniRefs={initializingMiniCanvasesRef}
                         slideRenderKey={slideRenderKey}
+                        getThumbnailSrc={(id) => thumbnails[id]}
                       />
                       <SlidesRightSpacer />
                     </SlidesRow>
-                  ))
-                ) : (
-                  <div className="flex-1 min-h-[400px] flex items-center justify-center">
-                    <EmptyState />
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-6">
+                  <EmptyState />
+                </div>
+              )}
             </div>
           </div>
         </div>

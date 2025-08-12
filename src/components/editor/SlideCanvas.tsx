@@ -18,6 +18,8 @@ export interface SlideCanvasProps {
   onClick: () => void;
   frameClassName?: string;
   borderClassName?: string;
+  /** Static thumbnail source for mini (unselected) slides */
+  thumbnailSrc?: string;
 }
 
 export default function SlideCanvas({
@@ -34,7 +36,8 @@ export default function SlideCanvas({
   slideRenderKey,
   onClick,
   frameClassName,
-  borderClassName
+  borderClassName,
+  thumbnailSrc
 }: SlideCanvasProps) {
   return (
     <button onClick={onClick} className={`transition-all duration-300 ${isSelected ? 'scale-110' : 'scale-90 hover:scale-95'}`}>
@@ -64,24 +67,21 @@ export default function SlideCanvas({
             />
           </div>
         ) : (
-          <canvas
-            key={`mini-canvas-${slideId}-${slideRenderKey}`}
-            ref={(el) => {
-              if (!el) return;
-              if (miniCanvasRefs.current[slideId]) return;
-              if (initializingMiniRefs?.current.has(slideId)) return;
-              initializingMiniRefs?.current.add(slideId);
-              requestAnimationFrame(() => {
-                if (el.parentNode && !miniCanvasRefs.current[slideId]) {
-                  initializeMini(slideId, el);
-                }
-                initializingMiniRefs?.current.delete(slideId);
-              });
-            }}
-            width={width}
-            height={height}
-            className="w-full h-full"
-          />
+          thumbnailSrc ? (
+            <img
+              key={`mini-img-${slideId}-${slideRenderKey}`}
+              src={thumbnailSrc}
+              alt="Slide thumbnail"
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            <div
+              key={`mini-placeholder-${slideId}-${slideRenderKey}`}
+              className="w-full h-full"
+              style={{ backgroundColor: '#f5f5f5' }}
+            />
+          )
         )}
       </div>
     </button>
