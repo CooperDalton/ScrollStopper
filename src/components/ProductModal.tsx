@@ -1,7 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct } from '@/lib/products';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Product,
+  CreateProductData,
+  UpdateProductData,
+  createProduct,
+  updateProduct,
+  ProductImage,
+  getProductImages,
+  uploadProductImage,
+  updateProductImageDescription,
+} from '@/lib/products';
+import { getImageUrl } from '@/lib/images';
+import { supabase } from '@/lib/supabase';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 interface ProductModalProps {
@@ -31,6 +43,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
   });
   
   const [isLoading, setIsLoading] = useState(false);
+  // Existing product images (edit mode only)
+  const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
+  const [existingDescriptions, setExistingDescriptions] = useState<Record<string, string>>({});
+  const [existingImageUrls, setExistingImageUrls] = useState<Record<string, string>>({});
+  // Newly added images before upload
+  const [newImages, setNewImages] = useState<{ file: File; previewUrl: string; description: string }[]>([]);
 
   const isEditMode = !!product;
 
@@ -42,13 +60,44 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
           name: product.name,
           description: product.description
         });
+        // Load existing product images
+        (async () => {
+          const { images } = await getProductImages(product.id);
+          setExistingImages(images);
+          const map: Record<string, string> = {};
+          images.forEach(img => { map[img.id] = img.user_description || ''; });
+          setExistingDescriptions(map);
+          // Build URL map with signed URLs (fallback-safe)
+          const urls: Record<string, string> = {};
+          await Promise.all(images.map(async (img) => {
+            // Prefer signed URL to handle private buckets; public buckets also work
+            try {
+              const { data, error } = await supabase.storage
+                .from('user-images')
+                .createSignedUrl(img.storage_path, 60 * 60);
+              if (!error && data?.signedUrl) {
+                urls[img.id] = data.signedUrl;
+              } else {
+                // Fallback to public URL helper if signed URL fails
+                urls[img.id] = getImageUrl(img.storage_path);
+              }
+            } catch (_) {
+              urls[img.id] = getImageUrl(img.storage_path);
+            }
+          }));
+          setExistingImageUrls(urls);
+        })();
       } else {
         setFormData({
           name: '',
           description: ''
         });
+        setExistingImages([]);
+        setExistingDescriptions({});
+        setExistingImageUrls({});
       }
       setErrors({ name: '', description: '' });
+      setNewImages([]);
     }
   }, [isOpen, product]);
 
@@ -111,31 +160,51 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
     setIsLoading(true);
     
     try {
+      let targetProductId: string | null = product?.id || null;
+
       if (isEditMode && product) {
-        // Update existing product
         const updateFunction = swrUpdateProduct || updateProduct;
         const { product: updatedProduct, error } = await updateFunction(product.id, {
           name: formData.name.trim(),
           description: formData.description.trim()
         });
-        
         if (error) {
           console.error('Error updating product:', error);
-          // You could show an error toast here
           return;
         }
+        targetProductId = updatedProduct?.id || product.id;
       } else {
-        // Create new product
         const addFunction = swrAddProduct || createProduct;
         const { product: newProduct, error } = await addFunction({
           name: formData.name.trim(),
           description: formData.description.trim()
         });
-        
-        if (error) {
+        if (error || !newProduct) {
           console.error('Error creating product:', error);
-          // You could show an error toast here
           return;
+        }
+        targetProductId = newProduct.id;
+      }
+
+      // If we have a target product id, handle image uploads/updates
+      if (targetProductId) {
+        // Upload new images
+        if (newImages.length > 0) {
+          await Promise.all(
+            newImages.map(async ({ file, description }) => {
+              await uploadProductImage(file, targetProductId!, description);
+            })
+          );
+        }
+
+        // Update existing image descriptions if changed
+        if (isEditMode && existingImages.length > 0) {
+          const updates = existingImages
+            .filter(img => (existingDescriptions[img.id] || '') !== (img.user_description || ''))
+            .map(img => updateProductImageDescription(img.id, existingDescriptions[img.id] || ''));
+          if (updates.length > 0) {
+            await Promise.all(updates);
+          }
         }
       }
       
@@ -148,6 +217,33 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
       setIsLoading(false);
     }
   };
+
+  const handleAddFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const toAdd: { file: File; previewUrl: string; description: string }[] = [];
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const previewUrl = URL.createObjectURL(file);
+      toAdd.push({ file, previewUrl, description: '' });
+    });
+    if (toAdd.length > 0) setNewImages(prev => [...toAdd, ...prev]);
+  };
+
+  const removeNewImageAt = (index: number) => {
+    setNewImages(prev => {
+      const copy = [...prev];
+      const [removed] = copy.splice(index, 1);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return copy;
+    });
+  };
+
+  const existingImagesWithUrls = useMemo(() => {
+    return existingImages.map(img => ({
+      ...img,
+      publicUrl: existingImageUrls[img.id] || getImageUrl(img.storage_path),
+    }));
+  }, [existingImages, existingImageUrls]);
 
   if (!isOpen) return null;
 
@@ -169,7 +265,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Product Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-[var(--color-text)] mb-2">
@@ -219,6 +315,86 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Product Images */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-[var(--color-text)]">
+                Product Images
+              </label>
+              <label className="inline-flex items-center px-3 py-1.5 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm cursor-pointer hover:bg-[var(--color-bg)]">
+                Add Images
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleAddFiles(e.target.files)}
+                  disabled={isLoading}
+                />
+              </label>
+            </div>
+
+            {/* Existing images (edit mode) */}
+            {isEditMode && existingImagesWithUrls.length > 0 && (
+              <div className="space-y-3 mb-4">
+                {existingImagesWithUrls.map(img => (
+                  <div key={img.id} className="flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                    <img
+                      src={img.publicUrl}
+                      alt={img.storage_path}
+                      className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)]"
+                    />
+                    <div className="flex-1">
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
+                      <textarea
+                        rows={2}
+                        className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                        placeholder="Describe what's in this image..."
+                        value={existingDescriptions[img.id] || ''}
+                        onChange={(e) => setExistingDescriptions(prev => ({ ...prev, [img.id]: e.target.value }))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New images to upload */}
+            {newImages.length > 0 && (
+              <div className="space-y-3">
+                {newImages.map((ni, idx) => (
+                  <div key={idx} className="flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                    <img
+                      src={ni.previewUrl}
+                      alt={`new-image-${idx}`}
+                      className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)]"
+                    />
+                    <div className="flex-1">
+                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
+                      <textarea
+                        rows={2}
+                        className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                        placeholder="Describe what's in this image..."
+                        value={ni.description}
+                        onChange={(e) => setNewImages(prev => prev.map((p, i) => i === idx ? { ...p, description: e.target.value } : p))}
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="self-start px-2 py-1 text-sm text-red-400 hover:text-red-300"
+                      onClick={() => removeNewImageAt(idx)}
+                      disabled={isLoading}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Actions */}

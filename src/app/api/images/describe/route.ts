@@ -21,22 +21,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing OPENAI_API_KEY on server' }, { status: 500 })
     }
     const { imageUrl, imageId } = await req.json()
-    if (!imageUrl || typeof imageUrl !== 'string') {
-      return NextResponse.json({ error: 'Missing imageUrl' }, { status: 400 })
-    }
     if (!imageId || typeof imageId !== 'string') {
       return NextResponse.json({ error: 'Missing imageId' }, { status: 400 })
     }
 
-    console.log('AI describe request imageUrl:', imageUrl)
+    const supabase = await createServerSupabaseClient()
+
+    // Primary: look up the image to get the storage path
+    let storagePath: string | undefined
+    {
+      const { data: imageRow, error: imageFetchError } = await supabase
+        .from('images')
+        .select('id, storage_path, file_path')
+        .eq('id', imageId)
+        .single()
+
+      if (!imageFetchError && imageRow) {
+        storagePath = (imageRow as any).storage_path || (imageRow as any).file_path
+      }
+    }
+
+    // Fallback: if not found (race/session), try deriving from provided imageUrl
+    if (!storagePath && imageUrl && typeof imageUrl === 'string') {
+      try {
+        const url = new URL(imageUrl, 'http://localhost')
+        // Expect format: /api/storage/user-images?path=<encoded>
+        const maybePath = url.searchParams.get('path')
+        if (maybePath) storagePath = maybePath
+      } catch {}
+    }
+
+    if (!storagePath) {
+      return NextResponse.json({ error: 'Image not found' }, { status: 404 })
+    }
+
+    // Generate a short-lived signed URL that OpenAI can access
+    const { data: signed, error: signError } = await supabase.storage
+      .from('user-images')
+      .createSignedUrl(storagePath, 60 * 10) // 10 minutes
+
+    if (signError || !signed?.signedUrl) {
+      return NextResponse.json({ error: 'Failed to create signed URL' }, { status: 500 })
+    }
+
+    const signedUrl = signed.signedUrl
+
+    console.log('AI describe using signed URL for image:', imageId)
     // Optional reachability check (helps catch bad URLs early)
     try {
-      const head = await fetch(imageUrl, { method: 'HEAD' })
+      const head = await fetch(signedUrl, { method: 'HEAD' })
       if (!head.ok) {
-        console.warn('Image URL not reachable:', imageUrl, head.status)
+        console.warn('Signed image URL not reachable:', head.status)
       }
     } catch (e) {
-      console.warn('HEAD check failed for image URL:', imageUrl, e)
+      console.warn('HEAD check failed for signed image URL:', e)
     }
 
     // Gate by test Pro flag stored in localStorage on client; server cannot read it.
@@ -56,7 +94,7 @@ Be factual. Do not mention watermarks. Do not include brand names unless clearly
         role: 'user',
         content: [
           { type: 'text' as const, text: 'Describe this image following the schema.' },
-          { type: 'image' as const, image: imageUrl },
+          { type: 'image' as const, image: signedUrl },
         ],
       },
     ]
@@ -80,7 +118,7 @@ Be factual. Do not mention watermarks. Do not include brand names unless clearly
       : []
 
     // Persist AI metadata on server (under the authenticated user)
-    const supabase = await createServerSupabaseClient()
+    // Use the same supabase client to persist metadata
 
     // Fetch existing metadata to merge safely
     const { data: existing, error: fetchError } = await supabase

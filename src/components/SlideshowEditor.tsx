@@ -1981,7 +1981,7 @@ export default function SlideshowEditor() {
                 {completedSlideshows.map(slideshow => {
                   const bucket = 'rendered-slides';
                   const first = slideshow.frame_paths?.[0]
-                    ? supabase.storage.from(bucket).getPublicUrl(slideshow.frame_paths[0]).data.publicUrl
+                    ? `/api/storage/${bucket}?path=${encodeURIComponent(slideshow.frame_paths[0] || '')}`
                     : null;
                   return (
                     <button
@@ -2006,7 +2006,7 @@ export default function SlideshowEditor() {
                         setIsOpeningModal(true);
                         
                         const urls = (currentSlideshow.frame_paths || []).map(p =>
-                          supabase.storage.from(bucket).getPublicUrl(p).data.publicUrl
+                          `/api/storage/${bucket}?path=${encodeURIComponent(p)}`
                         );
                         setPreviewImages(urls);
                         setPreviewSlideshowId(currentSlideshow.id);

@@ -158,7 +158,8 @@ export async function uploadImageToCollection(file: File, collectionId: string) 
     // Generate unique file path
     const fileExt = file.name.split('.').pop()
     const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`
-    const filePath = `${user.id}/${collectionId}/${fileName}`
+    // New folder layout: <uid>/collections/<collectionId>/<filename>
+    const filePath = `${user.id}/collections/${collectionId}/${fileName}`
 
     // Upload to Supabase storage
     const { error: uploadError } = await supabase.storage
@@ -273,11 +274,9 @@ export async function deleteImage(imageId: string) {
 
 export function getImageUrl(filePath: string) {
   try {
-    const { data } = supabase.storage
-      .from('user-images')
-      .getPublicUrl(filePath)
-    
-    return data.publicUrl
+    // Use authenticated proxy so private buckets work client-side
+    const encoded = encodeURIComponent(filePath)
+    return `/api/storage/user-images?path=${encoded}`
   } catch (error) {
     console.error('Error generating image URL:', error)
     return ''
