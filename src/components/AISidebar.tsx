@@ -3,7 +3,7 @@
 import React from 'react';
 import { useProducts } from '@/hooks/useProducts';
 
-export default function AISidebar({ onGenerate }: { onGenerate?: () => void }) {
+export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () => void; onAddRow?: () => void }) {
   const { products, isLoading, isError } = useProducts();
   const [prompt, setPrompt] = React.useState('');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('');
@@ -93,7 +93,15 @@ export default function AISidebar({ onGenerate }: { onGenerate?: () => void }) {
         />
       </div>
 
-      <div className="p-4 mt-auto border-t border-[var(--color-border)]">
+      <div className="p-4 mt-auto border-t border-[var(--color-border)] space-y-2">
+        {/* Temporary button to add a new row above current rows */}
+        <button
+          type="button"
+          onClick={() => { onAddRow?.(); }}
+          className="w-full p-3 bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          Add Row (temp)
+        </button>
         <button
           type="button"
           onClick={() => { onGenerate?.(); }}
