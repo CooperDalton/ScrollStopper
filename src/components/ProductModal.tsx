@@ -11,6 +11,7 @@ import {
   getProductImages,
   uploadProductImage,
   updateProductImageDescription,
+    deleteProductImage,
 } from '@/lib/products';
 import { getImageUrl } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
@@ -249,9 +250,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-      <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl w-full max-w-md mx-auto">
+      <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl w-full max-w-5xl mx-auto max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between p-6">
           <h2 className="text-xl font-bold text-[var(--color-text)]">
             {isEditMode ? 'Edit Product' : 'Add New Product'}
           </h2>
@@ -265,140 +266,181 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Product Name */}
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-              Product Name
-            </label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              className={`w-full px-3 py-2 bg-[var(--color-bg)] border rounded-lg text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
-                errors.name ? 'border-red-500' : 'border-[var(--color-border)]'
-              }`}
-              placeholder="Enter product name..."
-              disabled={isLoading}
-            />
-            {errors.name && (
-              <p className="text-red-500 text-sm mt-1">{errors.name}</p>
-            )}
-          </div>
-
-          {/* Product Description */}
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-              Product Description
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              rows={4}
-              className={`w-full px-3 py-2 bg-[var(--color-bg)] border rounded-lg text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none ${
-                errors.description ? 'border-red-500' : 'border-[var(--color-border)]'
-              }`}
-              placeholder="Describe your product in detail (minimum 50 characters)..."
-              disabled={isLoading}
-            />
-            <div className="flex justify-between items-center mt-1">
-              {errors.description && (
-                <p className="text-red-500 text-sm">{errors.description}</p>
-              )}
-              {formData.description.trim().length < 50 && (
-                <p className="text-red-500 text-sm ml-auto">
-                  {formData.description.trim().length}/50 characters
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Product Images */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-[var(--color-text)]">
-                Product Images
-              </label>
-              <label className="inline-flex items-center px-3 py-1.5 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm cursor-pointer hover:bg-[var(--color-bg)]">
-                Add Images
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden p-6">
+          <div className="flex-1 min-h-0">
+            <div className="flex flex-col md:flex-row gap-6 h-full min-h-0">
+            {/* Left: Product Name + Description */}
+            <div className="md:w-1/2 space-y-6">
+              {/* Product Name */}
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                  Product Name
+                </label>
                 <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleAddFiles(e.target.files)}
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 bg-[var(--color-bg)] border rounded-lg text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                    errors.name ? 'border-red-500' : 'border-[var(--color-border)]'
+                  }`}
+                  placeholder="Enter product name..."
                   disabled={isLoading}
                 />
-              </label>
+                {errors.name && (
+                  <p className="text-red-500 text-sm mt-1">{errors.name}</p>
+                )}
+              </div>
+
+              {/* Product Description */}
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                  Product Description
+                </label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={8}
+                  className={`w-full px-3 py-2 bg-[var(--color-bg)] border rounded-lg text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none ${
+                    errors.description ? 'border-red-500' : 'border-[var(--color-border)]'
+                  }`}
+                  placeholder="Describe your product in detail (minimum 50 characters)..."
+                  disabled={isLoading}
+                />
+                <div className="flex justify-between items-center mt-1">
+                  {errors.description && (
+                    <p className="text-red-500 text-sm">{errors.description}</p>
+                  )}
+                  {formData.description.trim().length < 50 && (
+                    <p className="text-red-500 text-sm ml-auto">
+                      {formData.description.trim().length}/50 characters
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Existing images (edit mode) */}
-            {isEditMode && existingImagesWithUrls.length > 0 && (
-              <div className="space-y-3 mb-4">
-                {existingImagesWithUrls.map(img => (
-                  <div key={img.id} className="flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <img
-                      src={img.publicUrl}
-                      alt={img.storage_path}
-                      className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)]"
-                    />
-                    <div className="flex-1">
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
-                      <textarea
-                        rows={2}
-                        className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                        placeholder="Describe what's in this image..."
-                        value={existingDescriptions[img.id] || ''}
-                        onChange={(e) => setExistingDescriptions(prev => ({ ...prev, [img.id]: e.target.value }))}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-                ))}
+            {/* Right: Images pane */}
+            <div className="md:w-1/2 flex flex-col">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-[var(--color-text)]">Product Images</span>
+                  <span
+                    className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[var(--color-border)] text-[10px] leading-none text-[var(--color-text-muted)] cursor-help"
+                    title="Helps the AI understand your product and place the right images into auto-generated slides."
+                    aria-label="Info about product images"
+                  >
+                    ?
+                  </span>
+                </div>
+                <label className="inline-flex items-center px-3 py-1.5 rounded-md bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-sm cursor-pointer hover:bg-[var(--color-bg)]">
+                  Add Images
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleAddFiles(e.target.files)}
+                    disabled={isLoading}
+                  />
+                </label>
               </div>
-            )}
 
-            {/* New images to upload */}
-            {newImages.length > 0 && (
-              <div className="space-y-3">
-                {newImages.map((ni, idx) => (
-                  <div key={idx} className="flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <img
-                      src={ni.previewUrl}
-                      alt={`new-image-${idx}`}
-                      className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)]"
-                    />
-                    <div className="flex-1">
-                      <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
-                      <textarea
-                        rows={2}
-                        className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                        placeholder="Describe what's in this image..."
-                        value={ni.description}
-                        onChange={(e) => setNewImages(prev => prev.map((p, i) => i === idx ? { ...p, description: e.target.value } : p))}
-                        disabled={isLoading}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="self-start px-2 py-1 text-sm text-red-400 hover:text-red-300"
-                      onClick={() => removeNewImageAt(idx)}
-                      disabled={isLoading}
-                    >
-                      Remove
-                    </button>
+              {/* Dedicated scroll container for images list only */}
+              <div className="overflow-y-auto pr-2 space-y-3 max-h-[50vh] md:max-h-[60vh]">
+                {/* Existing images (edit mode) */}
+                {isEditMode && existingImagesWithUrls.length > 0 && (
+                  <div className="space-y-3">
+                    {existingImagesWithUrls.map(img => (
+                      <div key={img.id} className="relative flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 text-[var(--color-text-muted)] hover:text-red-400"
+                          onClick={async () => {
+                            if (isLoading) return;
+                            setIsLoading(true);
+                            try {
+                              await deleteProductImage(img.id);
+                              setExistingImages(prev => prev.filter(i => i.id !== img.id));
+                              setExistingDescriptions(prev => { const c = { ...prev }; delete c[img.id]; return c; });
+                              setExistingImageUrls(prev => { const c = { ...prev }; delete c[img.id]; return c; });
+                            } catch (e) {
+                              console.error('Failed to delete product image', e);
+                            } finally {
+                              setIsLoading(false);
+                            }
+                          }}
+                          aria-label="Delete image"
+                          title="Delete image"
+                        >
+                          ×
+                        </button>
+                        <img
+                          src={img.publicUrl}
+                          alt={img.storage_path}
+                          className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)] mt-5"
+                        />
+                        <div className="flex-1">
+                          <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
+                          <textarea
+                            rows={2}
+                            className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none"
+                            placeholder="Describe what the image is... E.g. App homepage, Logo, etc"
+                            value={existingDescriptions[img.id] || ''}
+                            onChange={(e) => setExistingDescriptions(prev => ({ ...prev, [img.id]: e.target.value }))}
+                            disabled={isLoading}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {/* New images to upload */}
+                {newImages.length > 0 && (
+                  <div className="space-y-3">
+                    {newImages.map((ni, idx) => (
+                      <div key={idx} className="relative flex gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 text-[var(--color-text-muted)] hover:text-red-400"
+                          onClick={() => removeNewImageAt(idx)}
+                          aria-label="Remove image"
+                          title="Remove image"
+                          disabled={isLoading}
+                        >
+                          ×
+                        </button>
+                        <img
+                          src={ni.previewUrl}
+                          alt={`new-image-${idx}`}
+                          className="w-16 h-16 object-cover rounded-md border border-[var(--color-border)] mt-5"
+                        />
+                        <div className="flex-1">
+                          <label className="block text-xs text-[var(--color-text-muted)] mb-1">Description</label>
+                          <textarea
+                            rows={2}
+                            className="w-full px-3 py-2 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none"
+                            placeholder="Describe what the image is... E.g. App homepage, Logo, etc"
+                            value={ni.description}
+                            onChange={(e) => setNewImages(prev => prev.map((p, i) => i === idx ? { ...p, description: e.target.value } : p))}
+                            disabled={isLoading}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+            </div>
           </div>
 
           {/* Actions */}
-          <div className="flex space-x-3 pt-4">
+          <div className="flex space-x-3 pt-6 mt-6 shrink-0">
             <button
               type="button"
               onClick={onClose}

@@ -238,7 +238,28 @@ export async function uploadProductImage(
       .single()
 
     if (dbError) throw dbError
-    return { image: data as ProductImage, error: null }
+    const inserted = data as ProductImage
+
+    // Fire-and-forget: trigger server-side AI description generation
+    try {
+      console.log('[products] Trigger AI description for product image:', inserted.id)
+      // Not awaiting to avoid blocking UI flow
+      describeProductImageAI(inserted.id)
+        .then((res) => {
+          if (res.error) {
+            console.error('[products] AI description error:', res.error)
+          } else {
+            console.log('[products] AI description saved for image:', inserted.id, 'len=', res.description?.length || 0)
+          }
+        })
+        .catch((e) => {
+          console.error('[products] AI description call failed:', e)
+        })
+    } catch (e) {
+      console.error('[products] Failed to enqueue AI description:', e)
+    }
+
+    return { image: inserted, error: null }
   } catch (error) {
     console.error('Error uploading product image:', error)
     return { image: null as ProductImage | null, error: error as Error }
@@ -264,5 +285,68 @@ export async function updateProductImageDescription(imageId: string, description
   } catch (error) {
     console.error('Error updating product image description:', error)
     return { image: null as ProductImage | null, error: error as Error }
+  }
+}
+
+// Delete a product image (removes storage object and DB row)
+export async function deleteProductImage(imageId: string) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User must be authenticated')
+
+    // Fetch the image to get its storage_path and verify ownership
+    const { data: image, error: fetchError } = await supabase
+      .from('product_images')
+      .select('*')
+      .eq('id', imageId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError) throw fetchError
+
+    const storagePath = (image as any).storage_path as string
+
+    // Remove file from storage (ignore missing files gracefully)
+    if (storagePath) {
+      const { error: storageError } = await supabase.storage
+        .from('user-images')
+        .remove([storagePath])
+      if (storageError && storageError.message && !/No such file or directory/i.test(storageError.message)) {
+        throw storageError
+      }
+    }
+
+    // Delete DB row
+    const { error: dbError } = await supabase
+      .from('product_images')
+      .delete()
+      .eq('id', imageId)
+      .eq('user_id', user.id)
+
+    if (dbError) throw dbError
+    return { error: null }
+  } catch (error) {
+    console.error('Error deleting product image:', error)
+    return { error: error as Error }
+  }
+}
+
+// Trigger AI description for a product image (server-side processing)
+export async function describeProductImageAI(imageId: string, imageUrl?: string) {
+  try {
+    const res = await fetch('/api/product-images/describe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageId, imageUrl }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error || 'Failed to describe product image')
+    }
+    const data = await res.json()
+    return { description: (data?.description as string) || '', error: null as Error | null }
+  } catch (error) {
+    console.error('Error describing product image (AI):', error)
+    return { description: '', error: error as Error }
   }
 }

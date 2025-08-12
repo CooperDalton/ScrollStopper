@@ -4,9 +4,9 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 // Stream a private storage object to the client using the current user's session.
 // Usage: /api/storage/user-images?path=<encoded path>
 //        /api/storage/rendered-slides?path=<encoded path>
-export async function GET(req: NextRequest, { params }: { params: { bucket: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ bucket: string }> }) {
   try {
-    const bucket = params.bucket
+    const { bucket } = await ctx.params
     if (!bucket || (bucket !== 'user-images' && bucket !== 'rendered-slides')) {
       return NextResponse.json({ error: 'Invalid bucket' }, { status: 400 })
     }
