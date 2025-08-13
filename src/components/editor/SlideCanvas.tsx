@@ -46,26 +46,31 @@ export default function SlideCanvas({
         style={{ width, height }}
       >
         {isSelected ? (
-          <div className="relative w-full h-full">
-            <canvas
-              key={`canvas-${slideId}-${slideRenderKey}`}
-              ref={(el) => {
-                if (!el) return;
-                if (canvasRefs.current[slideId]) return;
-                if (initializingRefs?.current.has(slideId)) return;
-                initializingRefs?.current.add(slideId);
-                requestAnimationFrame(() => {
-                  if (el.parentNode && !canvasRefs.current[slideId]) {
-                    initialize(slideId, el);
-                  }
+          <div
+            key={`canvas-${slideId}-${slideRenderKey}`}
+            className="relative w-full h-full"
+            ref={(container) => {
+              if (!container) return;
+              if (canvasRefs.current[slideId]) return;
+              if (initializingRefs?.current.has(slideId)) return;
+              initializingRefs?.current.add(slideId);
+              requestAnimationFrame(() => {
+                if (!container.parentNode || canvasRefs.current[slideId]) {
                   initializingRefs?.current.delete(slideId);
-                });
-              }}
-              width={width}
-              height={height}
-              className="w-full h-full"
-            />
-          </div>
+                  return;
+                }
+                // Clear any prior children to avoid duplicate canvases
+                while (container.firstChild) container.removeChild(container.firstChild);
+                const el = document.createElement('canvas');
+                el.width = width;
+                el.height = height;
+                el.className = 'w-full h-full';
+                container.appendChild(el);
+                initialize(slideId, el);
+                initializingRefs?.current.delete(slideId);
+              });
+            }}
+          />
         ) : (
           thumbnailSrc ? (
             <img
@@ -77,9 +82,28 @@ export default function SlideCanvas({
             />
           ) : (
             <div
-              key={`mini-placeholder-${slideId}-${slideRenderKey}`}
+              key={`mini-canvas-${slideId}-${slideRenderKey}`}
               className="w-full h-full"
-              style={{ backgroundColor: '#f5f5f5' }}
+              ref={(container) => {
+                if (!container) return;
+                if (miniCanvasRefs.current[slideId]) return;
+                if (initializingMiniRefs?.current.has(slideId)) return;
+                initializingMiniRefs?.current.add(slideId);
+                requestAnimationFrame(() => {
+                  if (!container.parentNode || miniCanvasRefs.current[slideId]) {
+                    initializingMiniRefs?.current.delete(slideId);
+                    return;
+                  }
+                  while (container.firstChild) container.removeChild(container.firstChild);
+                  const el = document.createElement('canvas');
+                  el.width = width;
+                  el.height = height;
+                  el.className = 'w-full h-full';
+                  container.appendChild(el);
+                  initializeMini(slideId, el);
+                  initializingMiniRefs?.current.delete(slideId);
+                });
+              }}
             />
           )
         )}

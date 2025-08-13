@@ -136,7 +136,8 @@ export default function AIEditorWorkspace() {
         const dataUrl = c.toDataURL({ format: 'png' });
         setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
       } catch {}
-      try { c.dispose(); } catch { try { c.clear(); } catch {} }
+      // Do NOT call dispose() here to avoid DOM mutations conflicting with React unmount
+      try { c.clear(); } catch {}
       delete canvasRefs.current[slideId];
       delete canvasElementRefs.current[slideId];
     }
@@ -150,7 +151,8 @@ export default function AIEditorWorkspace() {
         const dataUrl = c.toDataURL({ format: 'png' });
         setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
       } catch {}
-      try { c.dispose(); } catch { try { c.clear(); } catch {} }
+      // Do NOT call dispose() here to avoid DOM mutations conflicting with React unmount
+      try { c.clear(); } catch {}
       delete miniCanvasRefs.current[slideId];
       delete miniCanvasElementRefs.current[slideId];
     }
@@ -175,8 +177,9 @@ export default function AIEditorWorkspace() {
         height: CANVAS_HEIGHT,
         backgroundColor: '#f5f5f5'
       });
-      canvasRefs.current[slideId] = canvas;
+      // Track the DOM element so we can avoid disposing when React is unmounting
       canvasElementRefs.current[slideId] = canvasElement;
+      canvasRefs.current[slideId] = canvas;
       canvas.renderAll();
       // After first render, capture a thumbnail for when this slide becomes mini
       try {
@@ -202,8 +205,8 @@ export default function AIEditorWorkspace() {
       });
       canvas.selection = false;
       canvas.skipTargetFind = true;
-      miniCanvasRefs.current[slideId] = canvas;
       miniCanvasElementRefs.current[slideId] = canvasElement;
+      miniCanvasRefs.current[slideId] = canvas;
       canvas.renderAll();
       // Immediately capture a thumbnail to avoid white/invisible state
       try {
