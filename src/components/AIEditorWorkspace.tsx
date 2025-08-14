@@ -96,7 +96,27 @@ export default function AIEditorWorkspace() {
   }, []);
 
   // Helpers
-  const centerSlide = (slideId: string, delay: number = 50) => {
+  const animateScrollY = (element: HTMLElement, targetTop: number, durationMs: number) => {
+    const startTop = element.scrollTop;
+    const distance = targetTop - startTop;
+    if (durationMs <= 0 || Math.abs(distance) < 1) {
+      element.scrollTop = targetTop;
+      return;
+    }
+    const startTime = performance.now();
+    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
+    const step = () => {
+      const now = performance.now();
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      const eased = easeInOut(progress);
+      element.scrollTop = startTop + distance * eased;
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+
+  const centerSlide = (slideId: string, delay: number = 50, options?: { fastVertical?: boolean }) => {
     setTimeout(() => {
       const yContainer = verticalScrollRef.current;
       if (!yContainer) return;
@@ -124,7 +144,12 @@ export default function AIEditorWorkspace() {
       const containerRect = yContainer.getBoundingClientRect();
       const slideRect = slideElement.getBoundingClientRect();
       const targetTop = yContainer.scrollTop + (slideRect.top - containerRect.top) - (containerRect.height / 2) + (slideRect.height / 2);
-      yContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+      if (options?.fastVertical) {
+        // Shorter duration for row switches to feel snappier
+        animateScrollY(yContainer, targetTop, 160);
+      } else {
+        yContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+      }
     }, delay);
   };
 
@@ -245,7 +270,7 @@ export default function AIEditorWorkspace() {
     centerSlide(newSlides[0].id, 100);
   };
 
-  const handleSlideSelect = (slideId: string) => {
+  const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean }) => {
     // Dispose other full canvases to keep one active at a time
     Object.keys(canvasRefs.current).forEach(id => {
       if (id !== slideId) disposeCanvas(id);
@@ -258,7 +283,7 @@ export default function AIEditorWorkspace() {
       return copy;
     });
     setSelectedSlideId(slideId);
-    centerSlide(slideId, 50);
+    centerSlide(slideId, 50, options);
   };
 
   // Temporary: add a new row of 5 slides above current rows
@@ -286,8 +311,9 @@ export default function AIEditorWorkspace() {
 
   // Logic to switch active row when clicking any slide in that row
   const handleRowSlideSelect = (rowIndex: number, slideId: string) => {
-    if (activeRowIndex !== rowIndex) setActiveRowIndex(rowIndex);
-    handleSlideSelect(slideId);
+    const isDifferentRow = activeRowIndex !== rowIndex;
+    if (isDifferentRow) setActiveRowIndex(rowIndex);
+    handleSlideSelect(slideId, { fastVertical: isDifferentRow });
   };
 
   return (
