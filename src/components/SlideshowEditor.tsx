@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { fabric } from 'fabric';
+import { animateScrollX, FAST_SCROLL_DURATION_X_MS } from '@/lib/scroll';
 import EmptyState from '@/components/editor/EmptyState';
 import ControlPanel from '@/components/editor/ControlPanel';
 import SaveButtonOverlay from '@/components/editor/SaveButtonOverlay';
@@ -317,11 +318,8 @@ export default function SlideshowEditor() {
           // Calculate scroll position to center the slide within the fixed container
           const scrollLeft = slideLeft - (containerWidth / 2) + (slideWidth / 2);
           
-          // Smooth scroll to the calculated position
-          container.scrollTo({
-            left: scrollLeft,
-            behavior: 'smooth'
-          });
+          // Use global animated scroll with configurable duration
+          animateScrollX(container, scrollLeft, FAST_SCROLL_DURATION_X_MS);
         }
       }
     }, delay);

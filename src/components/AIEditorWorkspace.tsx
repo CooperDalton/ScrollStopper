@@ -6,6 +6,7 @@ import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/edi
 import SlidesList from '@/components/editor/SlidesList';
 import EmptyState from '@/components/editor/EmptyState';
 import { fabric } from 'fabric';
+import { animateScrollX, animateScrollY, FAST_SCROLL_DURATION_X_MS, FAST_SCROLL_DURATION_Y_MS } from '@/lib/scroll';
 import type { Slide } from '@/hooks/useSlideshows';
 
 export default function AIEditorWorkspace() {
@@ -16,6 +17,7 @@ export default function AIEditorWorkspace() {
   const [selectedSlideId, setSelectedSlideId] = React.useState<string>('');
   const [slideRenderKey, setSlideRenderKey] = React.useState<number>(0);
   const [isEditorCleared, setIsEditorCleared] = React.useState<boolean>(true);
+  // Scroll durations now come from global config in '@/lib/scroll'
 
   // Layout/aspect
   const parseAspectRatio = (ratio: string) => {
@@ -96,27 +98,9 @@ export default function AIEditorWorkspace() {
   }, []);
 
   // Helpers
-  const animateScrollY = (element: HTMLElement, targetTop: number, durationMs: number) => {
-    const startTop = element.scrollTop;
-    const distance = targetTop - startTop;
-    if (durationMs <= 0 || Math.abs(distance) < 1) {
-      element.scrollTop = targetTop;
-      return;
-    }
-    const startTime = performance.now();
-    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
-    const step = () => {
-      const now = performance.now();
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / durationMs);
-      const eased = easeInOut(progress);
-      element.scrollTop = startTop + distance * eased;
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  };
+  // animateScrollX/Y imported from '@/lib/scroll'
 
-  const centerSlide = (slideId: string, delay: number = 50, options?: { fastVertical?: boolean }) => {
+  const centerSlide = (slideId: string, delay: number = 50, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
     setTimeout(() => {
       const yContainer = verticalScrollRef.current;
       if (!yContainer) return;
@@ -137,7 +121,8 @@ export default function AIEditorWorkspace() {
         const rowRect = rowContainer.getBoundingClientRect();
         const slideRect = slideElement.getBoundingClientRect();
         const targetLeft = rowContainer.scrollLeft + (slideRect.left - rowRect.left) - (rowRect.width / 2) + (slideRect.width / 2);
-        rowContainer.scrollTo({ left: targetLeft, behavior: 'smooth' });
+        // Always use the configurable X duration so same-row and cross-row selections are consistent
+        animateScrollX(rowContainer, targetLeft, FAST_SCROLL_DURATION_X_MS);
       }
 
       // Vertical centering: use the main vertical container
@@ -146,7 +131,7 @@ export default function AIEditorWorkspace() {
       const targetTop = yContainer.scrollTop + (slideRect.top - containerRect.top) - (containerRect.height / 2) + (slideRect.height / 2);
       if (options?.fastVertical) {
         // Shorter duration for row switches to feel snappier
-        animateScrollY(yContainer, targetTop, 160);
+        animateScrollY(yContainer, targetTop, FAST_SCROLL_DURATION_Y_MS);
       } else {
         yContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
       }
@@ -270,7 +255,7 @@ export default function AIEditorWorkspace() {
     centerSlide(newSlides[0].id, 100);
   };
 
-  const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean }) => {
+  const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
     // Dispose other full canvases to keep one active at a time
     Object.keys(canvasRefs.current).forEach(id => {
       if (id !== slideId) disposeCanvas(id);
@@ -313,7 +298,7 @@ export default function AIEditorWorkspace() {
   const handleRowSlideSelect = (rowIndex: number, slideId: string) => {
     const isDifferentRow = activeRowIndex !== rowIndex;
     if (isDifferentRow) setActiveRowIndex(rowIndex);
-    handleSlideSelect(slideId, { fastVertical: isDifferentRow });
+    handleSlideSelect(slideId, { fastVertical: isDifferentRow, fastHorizontal: isDifferentRow });
   };
 
   return (
