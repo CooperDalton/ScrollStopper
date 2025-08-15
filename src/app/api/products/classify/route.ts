@@ -76,13 +76,17 @@ export async function POST(req: NextRequest) {
     ].join('\n')
 
     const { object: classified } = await generateObject({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-2.5-flash'),
       schema: classificationSchema,
       prompt: classificationPrompt,
     })
 
-    const industry: string[] = Array.isArray((classified as any)?.industry) ? (classified as any).industry : []
-    const product_type: string[] = Array.isArray((classified as any)?.product_type) ? (classified as any).product_type : []
+    const industry: string[] = Array.isArray((classified as any)?.industry) 
+      ? (classified as any).industry.map((i: string) => i.toLowerCase().trim()).filter(Boolean)
+      : []
+    const product_type: string[] = Array.isArray((classified as any)?.product_type) 
+      ? (classified as any).product_type.map((p: string) => p.toLowerCase().trim()).filter(Boolean)
+      : []
 
     // 2) Pull slide example candidates
     const { data: slideExamples } = await supabase
@@ -92,14 +96,14 @@ export async function POST(req: NextRequest) {
     const slideIndustries = Array.from(
       new Set(
         (slideExamples || [])
-          .map((r) => (r.industry || '').trim())
+          .map((r) => (r.industry || '').toLowerCase().trim())
           .filter((v) => typeof v === 'string' && v.length > 0)
       )
     )
     const slideProductTypes = Array.from(
       new Set(
         (slideExamples || [])
-          .map((r) => (r.product_type || '').trim())
+          .map((r) => (r.product_type || '').toLowerCase().trim())
           .filter((v) => typeof v === 'string' && v.length > 0)
       )
     )
@@ -120,13 +124,17 @@ export async function POST(req: NextRequest) {
       ].join('\n')
 
       const { object: matching } = await generateObject({
-        model: google('gemini-2.0-flash'),
+        model: google('gemini-2.5-flash'),
         schema: matchingSchema,
         prompt: matchingPrompt,
       })
 
-      matching_industries = Array.isArray((matching as any)?.matching_industries) ? (matching as any).matching_industries : []
-      matching_product_types = Array.isArray((matching as any)?.matching_product_types) ? (matching as any).matching_product_types : []
+      matching_industries = Array.isArray((matching as any)?.matching_industries) 
+        ? (matching as any).matching_industries.map((i: string) => i.toLowerCase().trim()).filter(Boolean)
+        : []
+      matching_product_types = Array.isArray((matching as any)?.matching_product_types) 
+        ? (matching as any).matching_product_types.map((p: string) => p.toLowerCase().trim()).filter(Boolean)
+        : []
     }
 
     // Normalize empties to null for DB if desired
