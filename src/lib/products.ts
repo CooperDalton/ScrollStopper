@@ -33,6 +33,19 @@ export interface UpdateProductData {
   description?: string
 }
 
+// Trigger background product classification (server-side API)
+async function classifyProductBackground(productId: string) {
+  try {
+    await fetch('/api/products/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId }),
+    })
+  } catch (error) {
+    console.error('Failed to call product classification API:', error)
+  }
+}
+
 // Internal: get image dimensions in browser
 async function getImageDimensionsFromBlob(blob: Blob): Promise<{ width: number | null; height: number | null }> {
   try {
@@ -70,6 +83,16 @@ export async function createProduct(data: CreateProductData) {
       .single()
 
     if (error) throw error
+    // Fire-and-forget: enqueue background classification
+    try {
+      if (product?.id) {
+        // Do not await to avoid blocking UI
+        classifyProductBackground(product.id)
+          .catch((e) => console.error('[products] classify background failed:', e))
+      }
+    } catch (e) {
+      console.error('[products] failed to enqueue classification:', e)
+    }
     return { product, error: null }
   } catch (error) {
     console.error('Error creating product:', error)
@@ -147,6 +170,15 @@ export async function updateProduct(id: string, data: UpdateProductData) {
       throw new Error('Product not found or you do not have permission to update it')
     }
     
+    // Fire-and-forget: enqueue background classification on updates as well
+    try {
+      if (product?.id) {
+        classifyProductBackground(product.id)
+          .catch((e) => console.error('[products] classify background failed:', e))
+      }
+    } catch (e) {
+      console.error('[products] failed to enqueue classification:', e)
+    }
     return { product, error: null }
   } catch (error) {
     console.error('Error updating product:', error)

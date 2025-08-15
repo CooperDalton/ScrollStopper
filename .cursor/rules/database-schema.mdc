@@ -41,10 +41,14 @@ CREATE TABLE public.product_images (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT product_images_pkey PRIMARY KEY (id),
-  CONSTRAINT product_images_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT product_images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT product_images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT product_images_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
 CREATE TABLE public.products (
+  industry ARRAY,
+  product_type ARRAY,
+  matching_industries ARRAY,
+  matching_product_types ARRAY,
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
   user_id uuid,
@@ -52,6 +56,29 @@ CREATE TABLE public.products (
   description text,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.slide_example_frames (
+  example_id uuid NOT NULL,
+  frame_index integer NOT NULL,
+  image_url text,
+  description text NOT NULL,
+  text_on_slide text,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT slide_example_frames_pkey PRIMARY KEY (id),
+  CONSTRAINT slide_example_frames_example_id_fkey FOREIGN KEY (example_id) REFERENCES public.slide_examples(id)
+);
+CREATE TABLE public.slide_examples (
+  source_url text NOT NULL,
+  industry text,
+  product_type text,
+  format text,
+  call_to_action text,
+  summary text,
+  performance jsonb,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT slide_examples_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.slide_overlays (
   slide_id uuid,
