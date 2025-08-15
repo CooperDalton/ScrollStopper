@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import AspectRatioPicker from '@/components/editor/AspectRatioPicker';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { fabric } from 'fabric';
 import { animateScrollX, FAST_SCROLL_DURATION_X_MS } from '@/lib/scroll';
@@ -1993,19 +1994,10 @@ export default function SlideshowEditor() {
                 <PlusIcon />
                 {isCreating ? 'Creating...' : 'New Slideshow'}
               </button>
-              <select
+              <AspectRatioPicker
                 value={newAspectRatio}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setNewAspectRatio(val);
-                  updateAspectRatioInUrl(val);
-                }}
-                className="px-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] appearance-none text-center focus:outline-none"
-              >
-                <option value="9:16">9:16</option>
-                <option value="1:1">1:1</option>
-                <option value="4:5">4:5</option>
-              </select>
+                onChange={(val) => { setNewAspectRatio(val); updateAspectRatioInUrl(val); }}
+              />
             </div>
           </div>
         )}

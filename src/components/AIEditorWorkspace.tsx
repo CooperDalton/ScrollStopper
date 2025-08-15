@@ -2,6 +2,8 @@
 
 import React from 'react';
 import AISidebar from '@/components/AISidebar';
+import ImageSelectionModal from '@/components/ImageSelectionModal';
+import CollectionSelectionModal from '@/components/CollectionSelectionModal';
 import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/editor/SlidesRow';
 import SlidesList from '@/components/editor/SlidesList';
 import EmptyState from '@/components/editor/EmptyState';
@@ -100,6 +102,13 @@ export default function AIEditorWorkspace() {
   // Thumbnail store for unselected slides
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
   const [verticalPad, setVerticalPad] = React.useState<number>(0);
+  const [aiThoughts, setAiThoughts] = React.useState<string>('');
+  const [slideshowJson, setSlideshowJson] = React.useState<string>('');
+  const [isSelectImagesOpen, setIsSelectImagesOpen] = React.useState<boolean>(false);
+  const [selectedImageIds, setSelectedImageIds] = React.useState<string[]>([]);
+  const [isSelectCollectionsOpen, setIsSelectCollectionsOpen] = React.useState<boolean>(false);
+  const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]);
+  const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
 
   const createPlaceholderThumbnail = React.useCallback((slideId: string) => {
     try {
@@ -254,7 +263,7 @@ export default function AIEditorWorkspace() {
         if (slide.backgroundImage) {
           fabric.Image.fromURL(
             slide.backgroundImage,
-            (img) => {
+            (img: fabric.Image) => {
               img.set({ selectable: false, evented: false });
               scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
               canvas.add(img);
@@ -281,7 +290,7 @@ export default function AIEditorWorkspace() {
           if (overlayData.imageUrl) {
             fabric.Image.fromURL(
               overlayData.imageUrl,
-              (img) => {
+              (img: fabric.Image) => {
                 img.set({
                   left: overlayData.position_x,
                   top: overlayData.position_y,
@@ -483,13 +492,73 @@ export default function AIEditorWorkspace() {
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden flex-1">
       <AISidebar
-        onGenerate={handleGenerate}
         onAddRow={handleAddRow}
         onGenerateFromJson={handleGenerateFromJson}
+        onRunGenerate={({ productId, prompt }) => {
+          try {
+            setAiThoughts('');
+            const run = async () => {
+              const res = await fetch('/api/slideshows/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio: selectedAspectRatio }),
+              });
+              if (!res.ok || !res.body) {
+                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                return;
+              }
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+                for (const part of parts) {
+                  const lines = part.split('\n');
+                  let eventType = '';
+                  let data = '';
+                  for (const line of lines) {
+                    if (line.startsWith('event:')) eventType = line.slice(6).trim();
+                    else if (line.startsWith('data:')) data += line.slice(5).trim();
+                  }
+                  if (eventType === 'thought') {
+                    setAiThoughts(prev => prev + data);
+                  } else if (eventType === 'thoughtln') {
+                    setAiThoughts(prev => (prev ? prev + '\n' : '') + data);
+                  } else if (eventType === 'json') {
+                    try {
+                      const obj = JSON.parse(data);
+                      setSlideshowJson(JSON.stringify(obj, null, 2));
+                    } catch {}
+                  }
+                }
+              }
+            };
+            run();
+          } catch (e) {
+            setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
+          }
+        }}
+        jsonValue={slideshowJson}
+        onJsonChange={setSlideshowJson}
+        onSelectImages={() => setIsSelectCollectionsOpen(true)}
+        aspectRatio={selectedAspectRatio}
+        onAspectRatioChange={setSelectedAspectRatio}
       />
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+            {/* AI Thoughts Floating Text Box */}
+            <div className="absolute bottom-4 left-4 z-10 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
+              <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">AI Thoughts</div>
+              <div className="text-sm text-[var(--color-text)] font-mono whitespace-pre-wrap max-h-64 overflow-auto pr-1">
+                {aiThoughts || 'Ready to generate slideshows...'}
+              </div>
+            </div>
+            
             {/* Single seamless scrollable area handling both horizontal and vertical centering */}
             <div ref={verticalScrollRef} className="absolute inset-0 overflow-auto scrollbar-hide">
               {rows.length > 0 && !isEditorCleared ? (
@@ -535,6 +604,12 @@ export default function AIEditorWorkspace() {
           </div>
         </div>
       </div>
+      <CollectionSelectionModal
+        isOpen={isSelectCollectionsOpen}
+        onClose={() => setIsSelectCollectionsOpen(false)}
+        onSelect={(ids) => setSelectedCollectionIds(ids)}
+        title="Select Collections for AI Generation"
+      />
     </div>
   );
 }
