@@ -9,6 +9,32 @@ import { fabric } from 'fabric';
 import { animateScrollX, animateScrollY, FAST_SCROLL_DURATION_X_MS, FAST_SCROLL_DURATION_Y_MS } from '@/lib/scroll';
 import type { Slide } from '@/hooks/useSlideshows';
 
+interface JSONText {
+  text: string;
+  position_x: number;
+  position_y: number;
+  size: number;
+}
+
+interface JSONOverlay {
+  image_ref: string;
+  position_x: number;
+  position_y: number;
+  rotation: number;
+  size: number;
+}
+
+interface JSONSlide {
+  background_image_ref?: string | null;
+  texts?: JSONText[];
+  overlays?: JSONOverlay[];
+}
+
+interface JSONSlideshow {
+  caption: string;
+  slides: JSONSlide[];
+}
+
 export default function AIEditorWorkspace() {
   // Local-only slideshow state (no Supabase/localStorage sync)
   // Support multiple slideshows (rows). Each row has its own slides array.
@@ -29,6 +55,38 @@ export default function AIEditorWorkspace() {
   const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH / aspectRatio);
   const MINI_CANVAS_WIDTH = 200;
   const MINI_CANVAS_HEIGHT = Math.round(MINI_CANVAS_WIDTH / aspectRatio);
+
+  const getTextStyling = (fontSize: number = 24) => ({
+    fontFamily: '"proxima-nova", sans-serif',
+    fontWeight: '600',
+    fill: '#ffffff',
+    textAlign: 'center' as const,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    stroke: 'black',
+    charSpacing: -40,
+    lineHeight: 1.0,
+    fontSize
+  });
+
+  const scaleImageToFillCanvas = (
+    img: fabric.Image,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
+    const imgWidth = img.width || 1;
+    const imgHeight = img.height || 1;
+    const scale = Math.max(canvasWidth / imgWidth, canvasHeight / imgHeight);
+    img.set({ scaleX: scale, scaleY: scale });
+    const scaledWidth = imgWidth * scale;
+    const scaledHeight = imgHeight * scale;
+    img.set({
+      left: (canvasWidth - scaledWidth) / 2,
+      top: (canvasHeight - scaledHeight) / 2,
+      originX: 'left',
+      originY: 'top'
+    });
+  };
 
   // Fabric refs
   const canvasRefs = React.useRef<{ [key: string]: fabric.Canvas }>({});
@@ -190,6 +248,64 @@ export default function AIEditorWorkspace() {
       // Track the DOM element so we can avoid disposing when React is unmounting
       canvasElementRefs.current[slideId] = canvasElement;
       canvasRefs.current[slideId] = canvas;
+
+      const slide = rows.flat().find(s => s.id === slideId);
+      if (slide) {
+        if (slide.backgroundImage) {
+          fabric.Image.fromURL(
+            slide.backgroundImage,
+            (img) => {
+              img.set({ selectable: false, evented: false });
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+              canvas.sendToBack(img);
+              canvas.renderAll();
+              try {
+                const dataUrl = canvas.toDataURL({ format: 'png' });
+                setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+              } catch {}
+            },
+            { crossOrigin: 'anonymous' }
+          );
+        }
+        slide.texts?.forEach((textData) => {
+          const fabricText = new fabric.IText(textData.text, {
+            ...getTextStyling(textData.size),
+            left: textData.position_x,
+            top: textData.position_y,
+            angle: textData.rotation || 0,
+          });
+          canvas.add(fabricText);
+        });
+        slide.overlays?.forEach((overlayData) => {
+          if (overlayData.imageUrl) {
+            fabric.Image.fromURL(
+              overlayData.imageUrl,
+              (img) => {
+                img.set({
+                  left: overlayData.position_x,
+                  top: overlayData.position_y,
+                  scaleX: overlayData.size / 100,
+                  scaleY: overlayData.size / 100,
+                  angle: overlayData.rotation,
+                  originX: 'center',
+                  originY: 'center',
+                  selectable: false,
+                  evented: false,
+                });
+                canvas.add(img);
+                canvas.renderAll();
+                try {
+                  const dataUrl = canvas.toDataURL({ format: 'png' });
+                  setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+                } catch {}
+              },
+              { crossOrigin: 'anonymous' }
+            );
+          }
+        });
+      }
+
       canvas.renderAll();
       // After first render, capture a thumbnail for when this slide becomes mini
       try {
@@ -255,6 +371,69 @@ export default function AIEditorWorkspace() {
     centerSlide(newSlides[0].id, 100);
   };
 
+  const handleGenerateFromJson = (jsonString: string) => {
+    // Dispose existing canvases to avoid stale refs
+    Object.keys(canvasRefs.current).forEach(disposeCanvas);
+    Object.keys(miniCanvasRefs.current).forEach(disposeMiniCanvas);
+
+    let data: JSONSlideshow;
+    try {
+      data = JSON.parse(jsonString) as JSONSlideshow;
+    } catch {
+      alert('Invalid JSON');
+      return;
+    }
+    if (!data || !Array.isArray(data.slides)) {
+      alert('JSON must contain slides');
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const newSlides: Slide[] = data.slides.map((slide, idx) => {
+      const slideId = `json-slide-${Date.now()}-${idx}`;
+      return {
+        id: slideId,
+        slideshow_id: 'ai-local',
+        duration_seconds: 3,
+        index: idx,
+        created_at: createdAt,
+        backgroundImage: slide.background_image_ref || undefined,
+        texts: (slide.texts || []).map((t, tIdx) => ({
+          id: `${slideId}-text-${tIdx}`,
+          slide_id: slideId,
+          text: t.text,
+          position_x: t.position_x,
+          position_y: t.position_y,
+          size: t.size,
+          rotation: 0,
+          font: '"proxima-nova", sans-serif',
+          created_at: createdAt
+        })),
+        overlays: (slide.overlays || []).map((o, oIdx) => ({
+          id: `${slideId}-overlay-${oIdx}`,
+          slide_id: slideId,
+          image_id: '',
+          position_x: o.position_x,
+          position_y: o.position_y,
+          rotation: o.rotation,
+          size: o.size,
+          created_at: createdAt,
+          imageUrl: o.image_ref
+        }))
+      };
+    });
+
+    setRows([newSlides]);
+    setActiveRowIndex(0);
+    if (newSlides.length > 0) {
+      setSelectedSlideId(newSlides[0].id);
+      centerSlide(newSlides[0].id, 100);
+    }
+    setSlideRenderKey(prev => prev + 1);
+    setIsEditorCleared(false);
+    ensureThumbnailsForSlides(newSlides.map(s => s.id));
+  };
+
   const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
     // Dispose other full canvases to keep one active at a time
     Object.keys(canvasRefs.current).forEach(id => {
@@ -303,7 +482,11 @@ export default function AIEditorWorkspace() {
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden flex-1">
-      <AISidebar onGenerate={handleGenerate} onAddRow={handleAddRow} />
+      <AISidebar
+        onGenerate={handleGenerate}
+        onAddRow={handleAddRow}
+        onGenerateFromJson={handleGenerateFromJson}
+      />
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">

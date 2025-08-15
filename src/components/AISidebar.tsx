@@ -3,10 +3,19 @@
 import React from 'react';
 import { useProducts } from '@/hooks/useProducts';
 
-export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () => void; onAddRow?: () => void }) {
+export default function AISidebar({
+  onGenerate,
+  onAddRow,
+  onGenerateFromJson
+}: {
+  onGenerate?: () => void;
+  onAddRow?: () => void;
+  onGenerateFromJson?: (json: string) => void;
+}) {
   const { products, isLoading, isError } = useProducts();
   const [prompt, setPrompt] = React.useState('');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('');
+  const [jsonInput, setJsonInput] = React.useState('');
 
   const PROMPT_KEY = 'aiEditorPrompt';
   const PRODUCT_KEY = 'aiEditorSelectedProductId';
@@ -93,7 +102,30 @@ export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () =>
         />
       </div>
 
+      <div className="p-4 border-b border-[var(--color-border)] space-y-2">
+        <label className="text-sm font-medium text-[var(--color-text)]" htmlFor="ai-json">
+          Slideshow JSON
+        </label>
+        <textarea
+          id="ai-json"
+          value={jsonInput}
+          onChange={(e) => setJsonInput(e.target.value)}
+          placeholder="Paste slideshow JSON here"
+          className="w-full min-h-28 p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        />
+      </div>
+
       <div className="p-4 mt-auto border-t border-[var(--color-border)] space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            onGenerateFromJson?.(jsonInput);
+          }}
+          className="w-full p-3 bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          Generate from JSON
+        </button>
+
         {/* Temporary button to add a new row above current rows */}
         <button
           type="button"
