@@ -513,7 +513,10 @@ export default function AIEditorWorkspace() {
               while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
-                buffer += decoder.decode(value, { stream: true });
+                const chunkText = decoder.decode(value, { stream: true });
+                // Append raw for visibility
+                setAiThoughts(prev => prev + chunkText);
+                buffer += chunkText;
                 const parts = buffer.split('\n\n');
                 buffer = parts.pop() || '';
                 for (const part of parts) {
@@ -522,7 +525,7 @@ export default function AIEditorWorkspace() {
                   let data = '';
                   for (const line of lines) {
                     if (line.startsWith('event:')) eventType = line.slice(6).trim();
-                    else if (line.startsWith('data:')) data += line.slice(5).trim();
+                    else if (line.startsWith('data:')) data += line.slice(5);
                   }
                   if (eventType === 'thought') {
                     setAiThoughts(prev => prev + data);
@@ -532,6 +535,11 @@ export default function AIEditorWorkspace() {
                     try {
                       const obj = JSON.parse(data);
                       setSlideshowJson(JSON.stringify(obj, null, 2));
+                    } catch {}
+                  } else if (eventType === 'json.partial') {
+                    try {
+                      const partial = JSON.parse(data);
+                      setSlideshowJson(JSON.stringify(partial, null, 2));
                     } catch {}
                   }
                 }
@@ -607,7 +615,10 @@ export default function AIEditorWorkspace() {
       <CollectionSelectionModal
         isOpen={isSelectCollectionsOpen}
         onClose={() => setIsSelectCollectionsOpen(false)}
-        onSelect={(ids) => setSelectedCollectionIds(ids)}
+        onSelect={(ids) => {
+          setSelectedCollectionIds(ids)
+          setIsSelectCollectionsOpen(false)
+        }}
         title="Select Collections for AI Generation"
       />
     </div>

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateObject, streamText } from 'ai'
+import { google } from "@ai-sdk/google"
+import { generateObject, streamText, NoObjectGeneratedError, streamObject } from 'ai'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export const runtime = 'edge'
@@ -37,16 +38,20 @@ const SlideshowSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('[slideshow-generate] Starting generation request')
     const { productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio } = await req.json()
     if (!productId || typeof productId !== 'string') {
+      console.log('[slideshow-generate] Missing productId')
       return new Response('Missing productId', { status: 400 })
     }
 
     const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
+    console.log('[slideshow-generate] User authenticated:', user.id)
 
     // Fetch product and classification fields
+    console.log('[slideshow-generate] Fetching product:', productId)
     const { data: product } = await supabase
       .from('products')
       .select('id, name, description, industry, product_type, matching_industries, matching_product_types')
@@ -55,27 +60,33 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!product) return new Response('Product not found', { status: 404 })
+    console.log('[slideshow-generate] Product found:', product.name)
 
     // Fetch product images context (ai_description + user_description)
+    console.log('[slideshow-generate] Fetching product images')
     let query = supabase
       .from('product_images')
       .select('id, ai_description, user_description')
       .eq('product_id', productId)
       .eq('user_id', user.id)
     if (Array.isArray(selectedImageIds) && selectedImageIds.length > 0) {
+      console.log('[slideshow-generate] Filtering by selected image IDs:', selectedImageIds.length)
       query = query.in('id', selectedImageIds)
     }
     // Include images from selected collections, if provided (via join through images table)
     let extraCollectionImages: any[] = []
     if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
+      console.log('[slideshow-generate] Fetching images from selected collections:', selectedCollectionIds)
       const extraQuery = supabase
         .from('images')
         .select('id, metadata, collection_id')
         .in('collection_id', selectedCollectionIds)
       const { data: extraData } = await extraQuery
       extraCollectionImages = extraData || []
+      console.log('[slideshow-generate] Found', extraCollectionImages.length, 'extra collection images')
     }
     const { data: images } = await query
+    console.log('[slideshow-generate] Found', images?.length || 0, 'product images')
 
     const imageItems = (images || []).map((img, idx) => {
       const ai = (img as any).ai_description || ''
@@ -107,26 +118,32 @@ export async function POST(req: NextRequest) {
         objects,
       })
     }
+    console.log('[slideshow-generate] Total image context items:', imageItems.length)
 
     const numImages = imageItems.length
     let imageContextStr = ''
     if (numImages < 100) {
+      console.log('[slideshow-generate] Using full image context (< 100 images)')
       imageContextStr = JSON.stringify(imageItems)
     } else if (numImages <= 500) {
+      console.log('[slideshow-generate] Using short image context (100-500 images)')
       imageContextStr = JSON.stringify(
         imageItems.map(({ ref, short_description, categories, objects }) => ({ ref, short_description, categories, objects }))
       )
     } else {
+      console.log('[slideshow-generate] Using minimal image context (> 500 images)')
       imageContextStr = JSON.stringify(
         imageItems.map(({ ref, categories, objects }) => ({ ref, categories, objects }))
       )
     }
 
     // Example slideshow retrieval
+    console.log('[slideshow-generate] Fetching example slideshows')
     const industries = ((product as any).industry || []) as string[]
     const productTypes = ((product as any).product_type || []) as string[]
     const matchingIndustries = ((product as any).matching_industries || []) as string[]
     const matchingProductTypes = ((product as any).matching_product_types || []) as string[]
+    console.log('[slideshow-generate] Product classifications:', { industries, productTypes, matchingIndustries, matchingProductTypes })
 
     const candidates = new Set<string>([
       ...industries,
@@ -137,6 +154,7 @@ export async function POST(req: NextRequest) {
 
     let exampleRows: any[] = []
     if (candidates.size > 0) {
+      console.log('[slideshow-generate] Looking for examples matching candidates:', Array.from(candidates))
       const { data: ex1 } = await supabase
         .from('slide_examples')
         .select('id, industry, product_type, format, call_to_action, summary')
@@ -148,12 +166,15 @@ export async function POST(req: NextRequest) {
         .in('product_type', Array.from(candidates))
         .limit(15)
       exampleRows = [ ...(ex1 || []), ...(ex2 || []) ]
+      console.log('[slideshow-generate] Found', exampleRows.length, 'matching examples')
     } else {
+      console.log('[slideshow-generate] No candidates, fetching general examples')
       const { data: exAll } = await supabase
         .from('slide_examples')
         .select('id, industry, product_type, format, call_to_action, summary')
         .limit(20)
       exampleRows = exAll || []
+      console.log('[slideshow-generate] Found', exampleRows.length, 'general examples')
     }
 
     // Compute canvas bounds from aspect ratio (AI guidance)
@@ -161,8 +182,10 @@ export async function POST(req: NextRequest) {
     const [aw, ah] = ar.split(':').map((n: string) => parseInt(n, 10) || 9)
     const CANVAS_WIDTH = 300
     const CANVAS_MAX_HEIGHT = Math.round((CANVAS_WIDTH * ah) / aw)
+    console.log('[slideshow-generate] Canvas dimensions:', { aspectRatio: ar, width: CANVAS_WIDTH, maxHeight: CANVAS_MAX_HEIGHT })
 
     // Prepare messages
+    console.log('[slideshow-generate] Preparing AI messages')
     const system = 'You are a TikTok/Instagram ad slideshow generator. You will first think out loud to plan. Later you will return ONLY JSON.'
     const userPlan = [
       `Product: ${product.name || ''}`,
@@ -181,28 +204,34 @@ export async function POST(req: NextRequest) {
       '',
       'Plan out loud how you will: choose a format, pick images by ref, write slide texts, and timing. Do not output JSON yet.'
     ].join('\n')
+    console.log('[slideshow-generate] Starting streaming response')
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          // 1) Stream planning thoughts
-          const plan = await streamText({
-            model: openai('gpt-5'),
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: userPlan },
-            ],
-          })
-
-          const reader = plan.textStream.getReader()
-          while (true) {
-            const { value, done } = await reader.read()
-            if (done) break
-            const chunk = typeof value === 'string' ? value : String(value)
-            controller.enqueue(encoder.encode(`event: thought\n`))
-            controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
+          console.log('[slideshow-generate] Starting planning phase')
+          // 1) Stream planning thoughts (no fallback)
+          {
+            const plan = await streamText({
+              model: google("models/gemini-2.5-flash"),
+              messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: userPlan },
+              ],
+            })
+            console.log('[slideshow-generate] Planning stream created, reading chunks')
+            const reader = plan.textStream.getReader()
+            while (true) {
+              const { value, done } = await reader.read()
+              if (done) break
+              const chunk = typeof value === 'string' ? value : String(value)
+              console.log('[slideshow-generate] Planning chunk:', chunk.length, 'chars')
+              controller.enqueue(encoder.encode(`event: thought\n`))
+              controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
+            }
           }
+          console.log('[slideshow-generate] Planning complete, starting JSON generation')
 
           // 2) Generate final JSON strictly
           const systemJson = `You are a TikTok/Instagram ad slideshow generator. Reply only with JSON matching the schema. Use provided image refs and examples as inspiration. The canvas is ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT} pixels.`
@@ -238,21 +267,58 @@ export async function POST(req: NextRequest) {
               }),
             }),
           })
+          console.log('[slideshow-generate] Calling streamObject for structured JSON')
 
-          const { object } = await generateObject({
-            model: openai('gpt-5'),
-            schema: SchemaWithHints,
-            messages: [
-              { role: 'system', content: systemJson },
-              { role: 'user', content: userJson },
-            ],
-          })
+          try {
+            const { partialObjectStream, object, response, usage } = await streamObject({
+              model: google("models/gemini-2.5-flash"),
+              schema: SchemaWithHints,
+              schemaName: 'Slideshow',
+              schemaDescription: 'A slideshow specification with caption and slides.',
+              messages: [
+                { role: 'system', content: systemJson },
+                { role: 'user', content: userJson },
+              ],
+            })
 
-          controller.enqueue(encoder.encode(`event: thoughtln\n`))
-          controller.enqueue(encoder.encode(`data: --- JSON READY ---\n\n`))
-          controller.enqueue(encoder.encode(`event: json\n`))
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(object)}\n\n`))
+            // forward partials
+            for await (const partial of partialObjectStream) {
+              try {
+                controller.enqueue(encoder.encode(`event: json.partial\n`))
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(partial)}\n\n`))
+              } catch {}
+            }
+
+            const finalObj = await object
+            console.log('[slideshow-generate] JSON generation successful, object keys:', Object.keys(finalObj || {}))
+            try {
+              const meta = await response
+              console.log('[slideshow-generate] Provider response metadata:', meta)
+            } catch {}
+            if (usage) {
+              try {
+                const u = await usage
+                if (u) console.log('[slideshow-generate] Token usage:', u)
+              } catch {}
+            }
+
+            controller.enqueue(encoder.encode(`event: thoughtln\n`))
+            controller.enqueue(encoder.encode(`data: --- JSON READY ---\n\n`))
+            controller.enqueue(encoder.encode(`event: json\n`))
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalObj)}\n\n`))
+            console.log('[slideshow-generate] Stream complete')
+          } catch (err) {
+            if ((NoObjectGeneratedError as any).isInstance?.(err)) {
+              const e: any = err
+              console.error('[slideshow-generate] NoObjectGeneratedError: cause=', e?.cause)
+              console.error('[slideshow-generate] NoObjectGeneratedError: text=', e?.text)
+              console.error('[slideshow-generate] NoObjectGeneratedError: response=', e?.response)
+              console.error('[slideshow-generate] NoObjectGeneratedError: usage=', e?.usage)
+            }
+            throw err
+          }
         } catch (e) {
+          console.error('[slideshow-generate] Error in stream:', e)
           controller.enqueue(encoder.encode(`event: thoughtln\n`))
           controller.enqueue(encoder.encode(`data: ERROR: ${(e as Error).message}\n\n`))
         } finally {
@@ -260,6 +326,7 @@ export async function POST(req: NextRequest) {
         }
       }
     })
+    console.log('[slideshow-generate] Returning stream response')
 
     return new Response(stream, {
       headers: {
@@ -269,6 +336,7 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error) {
+    console.error('[slideshow-generate] Top-level error:', error)
     return new Response('Server error', { status: 500 })
   }
 }

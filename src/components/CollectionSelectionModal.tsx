@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCollections } from '@/hooks/useCollections';
+import CollectionThumbnail from './CollectionThumbnail';
 
 interface CollectionSelectionModalProps {
   isOpen: boolean;
@@ -19,6 +20,20 @@ const XIcon = () => (
 export default function CollectionSelectionModal({ isOpen, onClose, onSelect, title = 'Select Collections' }: CollectionSelectionModalProps) {
   const { collections, isLoading } = useCollections();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Load saved selections when opening
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const raw = localStorage.getItem('aiEditorSelectedCollectionIds')
+      if (raw) {
+        const ids = JSON.parse(raw) as string[]
+        const available = new Set(collections.map((c: any) => c.id))
+        const valid = ids.filter((id) => available.has(id))
+        setSelected(new Set(valid))
+      }
+    } catch {}
+  }, [isOpen, collections])
 
   const allIds = useMemo(() => new Set(collections.map((c: any) => c.id)), [collections]);
   const allSelected = selected.size > 0 && selected.size === allIds.size;
@@ -41,7 +56,12 @@ export default function CollectionSelectionModal({ isOpen, onClose, onSelect, ti
     });
   };
 
-  const apply = () => onSelect(Array.from(selected));
+  const apply = () => {
+    const ids = Array.from(selected)
+    onSelect(ids)
+    try { localStorage.setItem('aiEditorSelectedCollectionIds', JSON.stringify(ids)) } catch {}
+    onClose()
+  };
 
   return (
     <div 
@@ -82,13 +102,18 @@ export default function CollectionSelectionModal({ isOpen, onClose, onSelect, ti
                 onClick={() => toggle(c.id)}
                 className={`p-4 rounded-xl border transition-colors text-left ${selected.has(c.id) ? 'border-[var(--color-primary)] bg-[var(--color-bg-tertiary)]' : 'border-[var(--color-border)] bg-[var(--color-bg-secondary)]'}`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-[var(--color-text)]">{c.name}</div>
-                  <input type="checkbox" readOnly checked={selected.has(c.id)} className="w-4 h-4" />
+                <div className="flex flex-col">
+                  <div className="mb-3">
+                    <CollectionThumbnail collection={c} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-[var(--color-text)]">{c.name}</div>
+                    <input type="checkbox" readOnly checked={selected.has(c.id)} className="w-4 h-4" />
+                  </div>
+                  {typeof c.image_count === 'number' && (
+                    <div className="text-xs text-[var(--color-text-muted)] mt-1">{c.image_count} images</div>
+                  )}
                 </div>
-                {typeof c.image_count === 'number' && (
-                  <div className="text-xs text-[var(--color-text-muted)] mt-1">{c.image_count} images</div>
-                )}
               </button>
             ))}
           </div>
