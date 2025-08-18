@@ -29,7 +29,7 @@ const SlideshowSchema = z.object({
           position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
           position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
           rotation: z.number().describe("0-360 degrees"),
-          size: z.number().describe("24-60 pixel size"),
+          size: z.number() // TODO: add size description
         })
       ),
     })
@@ -64,15 +64,13 @@ export async function POST(req: NextRequest) {
 
     // Fetch product images context (ai_description + user_description)
     console.log('[slideshow-generate] Fetching product images')
-    let query = supabase
+    const { data: images } = await supabase
       .from('product_images')
       .select('id, ai_description, user_description')
       .eq('product_id', productId)
       .eq('user_id', user.id)
-    if (Array.isArray(selectedImageIds) && selectedImageIds.length > 0) {
-      console.log('[slideshow-generate] Filtering by selected image IDs:', selectedImageIds.length)
-      query = query.in('id', selectedImageIds)
-    }
+    console.log('[slideshow-generate] Found', images?.length || 0, 'product images')
+
     // Include images from selected collections, if provided (via join through images table)
     let extraCollectionImages: any[] = []
     if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
@@ -85,8 +83,6 @@ export async function POST(req: NextRequest) {
       extraCollectionImages = extraData || []
       console.log('[slideshow-generate] Found', extraCollectionImages.length, 'extra collection images')
     }
-    const { data: images } = await query
-    console.log('[slideshow-generate] Found', images?.length || 0, 'product images')
 
     const imageItems = (images || []).map((img, idx) => {
       const ai = (img as any).ai_description || ''
@@ -263,7 +259,7 @@ export async function POST(req: NextRequest) {
                 position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
                 position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
                 rotation: z.number().describe('0-360 degrees'),
-                size: z.number().describe('24-60 pixel size'),
+                size: z.number() // TODO: add size description
               }),
             }),
           })
