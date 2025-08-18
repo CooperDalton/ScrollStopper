@@ -27,7 +27,7 @@ interface JSONOverlay {
 }
 
 interface JSONSlide {
-  background_image_ref?: string | null;
+  background_image_ref: string;
   texts?: JSONText[];
   overlays?: JSONOverlay[];
 }
@@ -406,7 +406,7 @@ export default function AIEditorWorkspace() {
         duration_seconds: 3,
         index: idx,
         created_at: createdAt,
-        backgroundImage: slide.background_image_ref || undefined,
+        backgroundImage: slide.background_image_ref,
         texts: (slide.texts || []).map((t, tIdx) => ({
           id: `${slideId}-text-${tIdx}`,
           slide_id: slideId,

@@ -1,40 +1,41 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
-import { createOpenAI } from '@ai-sdk/openai'
 import { google } from "@ai-sdk/google"
-import { generateObject, streamText, NoObjectGeneratedError, streamObject } from 'ai'
+import { streamText, NoObjectGeneratedError, streamObject } from 'ai'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
 
-const openai = createOpenAI()
+function slideshowSchemaWithRefs(validRefs: string[]) {
+  const RefEnum = z.enum(validRefs as [string, ...string[]])
 
-const SlideshowSchema = z.object({
-  caption: z.string(),
-  slides: z.array(
-    z.object({
-      background_image_ref: z.string().nullable().optional(),
-      texts: z.array(
-        z.object({
-          text: z.string(),
-          position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-          position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-          size: z.number().describe("24-60 pixel size"),
-        })
-      ),
-      overlays: z.array(
-        z.object({
-          image_ref: z.string(),
-          position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-          position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-          rotation: z.number().describe("0-360 degrees"),
-          size: z.number().describe("24-60 pixel size"),
-        })
-      ),
-    })
-  ),
-})
+  const SlideText = z.object({
+    text: z.string(),
+    position_x: z.number(),
+    position_y: z.number(),
+    size: z.number(),
+  })
+
+  const SlideOverlay = z.object({
+    image_ref: RefEnum,
+    position_x: z.number(),
+    position_y: z.number(),
+    rotation: z.number(),
+    size: z.number(),
+  })
+
+  return z.object({
+    caption: z.string(),
+    slides: z.array(
+      z.object({
+        background_image_ref: RefEnum,
+        texts: z.array(SlideText),
+        overlays: z.array(SlideOverlay),
+      })
+    ),
+  })
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -94,7 +95,8 @@ export async function POST(req: NextRequest) {
       const long_description = ai || userDesc
       const short_description = (long_description || '').split('.').slice(0, 1).join('.').trim()
       return {
-        ref: `img_${idx + 1}`,
+        id: (img as any).id as string,
+        ref: `i${String(idx + 1).padStart(2, '0')}`,
         short_description,
         long_description,
         categories: [] as string[],
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
 
     // Append extra images from selected collections (metadata-based context only)
     const extras = extraCollectionImages as any[]
+    let nextRefIndex = imageItems.length
     for (let i = 0; i < extras.length; i++) {
       const meta = (extras[i]?.metadata as any) || {}
       const short_description = typeof meta.short_description === 'string' ? meta.short_description : ''
@@ -111,31 +114,47 @@ export async function POST(req: NextRequest) {
       const categories = Array.isArray(meta.categories) ? meta.categories : []
       const objects = Array.isArray(meta.objects) ? meta.objects : []
       imageItems.push({
-        ref: `col_${i + 1}`,
+        id: (extras[i] as any).id,
+        ref: `i${String(nextRefIndex + 1).padStart(2, '0')}`,
         short_description,
         long_description,
         categories,
         objects,
       })
+      nextRefIndex++
     }
     console.log('[slideshow-generate] Total image context items:', imageItems.length)
 
-    const numImages = imageItems.length
+    const refMap: Record<string, string> = {}
+    imageItems.forEach((img) => {
+      refMap[img.ref] = img.id
+    })
+    const validRefs = Object.keys(refMap)
+    if (validRefs.length === 0) {
+      console.log('[slideshow-generate] No images available for generation')
+      return new Response('No images available', { status: 400 })
+    }
+
+    const itemsForContext = imageItems.map(({ id, ...rest }) => rest)
+    const numImages = itemsForContext.length
     let imageContextStr = ''
     if (numImages < 100) {
       console.log('[slideshow-generate] Using full image context (< 100 images)')
-      imageContextStr = JSON.stringify(imageItems)
+      imageContextStr = JSON.stringify(itemsForContext)
     } else if (numImages <= 500) {
       console.log('[slideshow-generate] Using short image context (100-500 images)')
       imageContextStr = JSON.stringify(
-        imageItems.map(({ ref, short_description, categories, objects }) => ({ ref, short_description, categories, objects }))
+        itemsForContext.map(({ ref, short_description, categories, objects }) => ({ ref, short_description, categories, objects }))
       )
     } else {
       console.log('[slideshow-generate] Using minimal image context (> 500 images)')
       imageContextStr = JSON.stringify(
-        imageItems.map(({ ref, categories, objects }) => ({ ref, categories, objects }))
+        itemsForContext.map(({ ref, categories, objects }) => ({ ref, categories, objects }))
       )
     }
+
+    const BaseSchema = slideshowSchemaWithRefs(validRefs)
+    const refHeader = JSON.stringify({ refs: validRefs })
 
     // Example slideshow retrieval
     console.log('[slideshow-generate] Fetching example slideshows')
@@ -188,6 +207,7 @@ export async function POST(req: NextRequest) {
     console.log('[slideshow-generate] Preparing AI messages')
     const system = 'You are a TikTok/Instagram ad slideshow generator. You will first think out loud to plan. Later you will return ONLY JSON.'
     const userPlan = [
+      refHeader,
       `Product: ${product.name || ''}`,
       `Description: ${product.description || ''}`,
       `Industry: ${JSON.stringify(industries)}`,
@@ -236,6 +256,7 @@ export async function POST(req: NextRequest) {
           // 2) Generate final JSON strictly
           const systemJson = `You are a TikTok/Instagram ad slideshow generator. Reply only with JSON matching the schema. Use provided image refs and examples as inspiration. The canvas is ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT} pixels.`
           const userJson = [
+            refHeader,
             `Product: ${product.name || ''}`,
             `Description: ${product.description || ''}`,
             `Industry: ${JSON.stringify(industries)}`,
@@ -252,14 +273,14 @@ export async function POST(req: NextRequest) {
           ].join('\n')
 
           // Update schema field descriptions with computed bounds
-          const SchemaWithHints = SlideshowSchema.extend({
-            slides: SlideshowSchema.shape.slides.element.extend({
-              texts: SlideshowSchema.shape.slides.element.shape.texts.element.extend({
+          const SchemaWithHints = BaseSchema.extend({
+            slides: BaseSchema.shape.slides.element.extend({
+              texts: BaseSchema.shape.slides.element.shape.texts.element.extend({
                 position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
                 position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
                 size: z.number().describe('24-60 pixel size'),
               }),
-              overlays: SlideshowSchema.shape.slides.element.shape.overlays.element.extend({
+              overlays: BaseSchema.shape.slides.element.shape.overlays.element.extend({
                 position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
                 position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
                 rotation: z.number().describe('0-360 degrees'),
