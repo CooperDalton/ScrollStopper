@@ -14,31 +14,41 @@ const openai = createOpenAI()
 const MAX_TOOL_ROUNDS = 6
 const MAX_LONGS_PER_ROUND = 40
 
-const SlideshowSchema = z.object({
-  caption: z.string(),
-  slides: z.array(
-    z.object({
-      background_image_ref: z.string().nullable().optional(),
-      texts: z.array(
-        z.object({
-          text: z.string(),
-          position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-          position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-          size: z.number().describe("24-60 pixel size"),
-        })
-      ),
-      overlays: z.array(
-        z.object({
-          image_ref: z.string(),
-          position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-          position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-          rotation: z.number().describe("0-360 degrees"),
-          size: z.number() // TODO: add size description
-        })
-      ),
-    })
-  ),
-})
+// Base schema - will be enhanced with dynamic enums
+const createSlideshowSchema = (collectionRefs: string[], productRefs: string[]) => {
+  // Ensure we have at least one collection image for backgrounds
+  if (collectionRefs.length === 0) {
+    throw new Error('At least one collection image is required for backgrounds')
+  }
+  
+  return z.object({
+    caption: z.string().describe("Overall caption for the slideshow"),
+    slides: z.array(
+      z.object({
+        background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
+        texts: z.array(
+          z.object({
+            text: z.string().describe("Text content for the slide"),
+            position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
+            position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
+            size: z.number().describe("24-60 pixel size"),
+          })
+        ).describe("Array of text overlays on this slide"),
+        overlays: z.array(
+          z.object({
+            image_ref: productRefs.length > 0 
+              ? z.enum(productRefs as [string, ...string[]]).describe("Product image ref for overlay")
+              : z.string().describe("Product image ref for overlay"),
+            position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
+            position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
+            rotation: z.number().describe("0-360 degrees"),
+            size: z.number().describe("10-100 size percentage")
+          })
+        ).describe("Array of image overlays on this slide (use sparingly, product images only)"),
+      })
+    ).min(1).describe("Array of slides - you MUST create multiple slides as requested"),
+  })
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,6 +57,17 @@ export async function POST(req: NextRequest) {
     if (!productId || typeof productId !== 'string') {
       console.log('[slideshow-generate] Missing productId')
       return new Response('Missing productId', { status: 400 })
+    }
+    
+    // Validate that at least one collection is selected
+    if (!Array.isArray(selectedCollectionIds) || selectedCollectionIds.length === 0) {
+      console.log('[slideshow-generate] No collections selected')
+      return new Response(JSON.stringify({ 
+        error: 'Please select at least one collection to generate a slideshow. Collection images are required for slide backgrounds.' 
+      }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
 
     const supabase = await createServerSupabaseClient()
@@ -93,14 +114,15 @@ export async function POST(req: NextRequest) {
       console.log('[slideshow-generate] Found', extraCollectionImages.length, 'extra collection images')
     }
 
-    // Build product images context (from product_images)
+    // Build product images context with prompt-local refs
     const productImageItems = (images || []).map((img, idx) => {
       const ai = (img as any).ai_description || ''
       const userDesc = (img as any).user_description || ''
       const long_description = ai || userDesc
       const short_description = (long_description || '').split('.').slice(0, 1).join('.').trim()
       return {
-        ref: (img as any).id as string, // use actual database id as ref
+        id: (img as any).id as string,
+        ref: `p${String(idx + 1).padStart(2, '0')}`, // p01, p02, etc.
         short_description,
         long_description,
         categories: [] as string[],
@@ -108,7 +130,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // Build collection images context (from images table -> selected collections)
+    // Build collection images context with prompt-local refs
     const collectionImageItems: any[] = []
     const extras = extraCollectionImages as any[]
     for (let i = 0; i < extras.length; i++) {
@@ -118,13 +140,20 @@ export async function POST(req: NextRequest) {
       const categories = Array.isArray(meta.categories) ? meta.categories : []
       const objects = Array.isArray(meta.objects) ? meta.objects : []
       collectionImageItems.push({
-        ref: (extras[i] as any).id as string, // use actual database id as ref
+        id: (extras[i] as any).id as string,
+        ref: `c${String(i + 1).padStart(2, '0')}`, // c01, c02, etc.
         short_description,
         long_description,
         categories,
         objects,
       })
     }
+
+    // Create ref mapping for final JSON conversion
+    const productRefMap = new Map<string, string>() // p01 -> uuid
+    const collectionRefMap = new Map<string, string>() // c01 -> uuid
+    productImageItems.forEach(item => productRefMap.set(item.ref, item.id))
+    collectionImageItems.forEach(item => collectionRefMap.set(item.ref, item.id))
 
     console.log('[slideshow-generate] Product image items:', productImageItems.length)
     console.log('[slideshow-generate] Collection image items:', collectionImageItems.length)
@@ -306,16 +335,35 @@ export async function POST(req: NextRequest) {
     // Prepare messages
     console.log('[slideshow-generate] Preparing AI messages')
     const system = [
-      'You are a TikTok/Instagram ad slideshow generator.',
-      'First, think out loud to plan. Later you will return ONLY JSON.',
-      `Tool usage rules:`,
+      'You are a TikTok/Instagram slideshow generator that creates engaging multi-slide content.',
+      'CRITICAL: You must create MULTIPLE slides as requested by the user. The schema requires an array of slides.',
+      '',
+      'Process:',
+      '1. First, use tools to explore available images and examples',
+      '2. Plan your slideshow structure based on user requirements', 
+      '3. Then generate structured JSON matching the exact schema',
+      '',
+      'Tool usage rules:',
       `- Max tool rounds: ${MAX_TOOL_ROUNDS}. Use at most one brief and one long fetch per round.`,
       `- Always request more long descriptions than strictly needed (target ${MAX_LONGS_PER_ROUND}).`,
       `- If briefs are incoherent for the intended story, try a different (categories, objects) filter.`,
       `- If examples are requested or relevant, fetch 4–8 summaries, then at most 2 full example schemas.`,
-      `- Use image_id references (the ref fields provided) in the final plan.`,
+      `- Use image_id references (the ref fields provided) in the final JSON.`,
       `- If no examples match, ignore examples and follow the user brief directly.`,
-      `- Stop and produce the slideshow JSON once you have enough high-confidence images.`,
+      '',
+      'Image Usage Rules:',
+      '- Background images: Use collection image refs (c01, c02, etc.) - EVERY slide MUST have a background',
+      '- Overlay images: ONLY use product image refs (p01, p02, etc.), NEVER collection refs',
+      '- If NO product images are available, do NOT add any overlays (leave overlays array empty)',
+      '- Even with product images available, use overlays SPARINGLY - most slides should have empty overlays',
+      '- Only add overlays when they would significantly enhance the message or visual appeal',
+      '- Use short refs like c01, p01 instead of full UUIDs - the system will map them automatically',
+      '',
+      'JSON Requirements:',
+      '- slides MUST be an array, even for single slides',
+      '- texts and overlays MUST be arrays within each slide',
+      '- Use short refs (c01, p01) from the provided image lists for background_image_ref and image_ref',
+      '- Create the exact number of slides requested by the user',
     ].join('\n')
     const userPlan = [
       `Product: ${product.name || ''}`,
@@ -326,10 +374,10 @@ export async function POST(req: NextRequest) {
       `Matching Product Types: ${JSON.stringify(matchingProductTypes)}`,
       `Prompt: ${typeof prompt === 'string' ? prompt : ''}`,
       '',
-      'Allowed Product Images (use ref field only; refs are actual database ids):',
+      'Product Images (ONLY for overlays; use ref field like p01, p02):',
       productImageContextStr,
       '',
-      'Allowed Collection Images (use ref field only; refs are actual database ids):',
+      'Collection Images (for backgrounds; use ref field like c01, c02):',
       collectionImageContextStr,
       '',
       'Relevant Example Slideshows (summaries):',
@@ -369,7 +417,51 @@ export async function POST(req: NextRequest) {
           console.log('[slideshow-generate] Planning complete, starting JSON generation')
 
           // 2) Generate final JSON strictly
-          const systemJson = `You are a TikTok/Instagram ad slideshow generator. Reply only with JSON matching the schema. Use provided image refs (actual database ids) and examples as inspiration. The canvas is ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT} pixels.`
+          const slideCount = typeof prompt === 'string' && prompt.match(/(\d+)\s*slide/i) ? parseInt(prompt.match(/(\d+)\s*slide/i)![1], 10) : 3
+          const systemJson = `You are a TikTok/Instagram slideshow generator. Reply ONLY with valid JSON matching the exact schema.
+
+CRITICAL: You MUST generate exactly ${slideCount} slides in an array format.
+
+REQUIRED JSON STRUCTURE:
+{
+  "caption": "string",
+  "slides": [
+    {
+      "background_image_ref": "c01",
+      "texts": [
+        {
+          "text": "string",
+          "position_x": number,
+          "position_y": number,
+          "size": number
+        }
+      ],
+      "overlays": []
+    },
+    {
+      "background_image_ref": "c02", 
+      "texts": [
+        {
+          "text": "string",
+          "position_x": number,
+          "position_y": number,
+          "size": number
+        }
+      ],
+      "overlays": []
+    }
+    // ... repeat for ${slideCount} total slides
+  ]
+}
+
+CONSTRAINTS:
+- slides: MUST be array with ${slideCount} objects
+- texts: MUST be array (even if just one text element)
+- overlays: MUST be array (usually empty)
+- background_image_ref: Use collection refs (c01, c02, etc.)
+- Canvas: ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT}px
+
+Return ONLY the JSON object. No explanations, no markdown.`
           const userJson = [
             `Product: ${product.name || ''}`,
             `Description: ${product.description || ''}`,
@@ -379,16 +471,28 @@ export async function POST(req: NextRequest) {
             `Matching Product Types: ${JSON.stringify(matchingProductTypes)}`,
             `Prompt: ${typeof prompt === 'string' ? prompt : ''}`,
             '',
-            'Allowed Product Images (use ref field only; refs are actual database ids):',
+            'Product Images (ONLY for overlays; use ref field like p01, p02):',
             productImageContextStr,
             '',
-            'Allowed Collection Images (use ref field only; refs are actual database ids):',
+            'Collection Images (for backgrounds; use ref field like c01, c02):',
             collectionImageContextStr,
             '',
             'Relevant Example Slideshows (summaries):',
             JSON.stringify(exampleRows, null, 2),
           ].join('\n')
 
+          // Create dynamic schema with available refs
+          const collectionRefs = collectionImageItems.map(item => item.ref)
+          const productRefs = productImageItems.map(item => item.ref)
+          
+          if (collectionRefs.length === 0) {
+            controller.enqueue(encoder.encode(`event: thoughtln\n`))
+            controller.enqueue(encoder.encode(`data: ERROR: No collection images available for backgrounds. Please select at least one collection.\n\n`))
+            return
+          }
+          
+          const SlideshowSchema = createSlideshowSchema(collectionRefs, productRefs)
+          
           // Update schema field descriptions with computed bounds
           const SchemaWithHints = SlideshowSchema.extend({
             slides: SlideshowSchema.shape.slides.element.extend({
@@ -401,81 +505,97 @@ export async function POST(req: NextRequest) {
                 position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
                 position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
                 rotation: z.number().describe('0-360 degrees'),
-                size: z.number() // TODO: add size description
+                size: z.number().describe('10-100 size percentage')
               }),
             }),
           })
           console.log('[slideshow-generate] Calling streamObject for structured JSON')
 
           try {
-            const { partialObjectStream, object, response, usage } = await streamObject({
+            // Try generateObject for better schema compliance
+            const { object: finalObj, response, usage } = await generateObject({
               model: google("models/gemini-2.5-flash"),
               schema: SchemaWithHints,
               schemaName: 'Slideshow',
-              schemaDescription: 'A slideshow specification with caption and slides.',
+              schemaDescription: `A slideshow with exactly ${slideCount} slides in array format.`,
               messages: [
                 { role: 'system', content: systemJson },
                 { role: 'user', content: userJson },
               ],
             })
-
-            // forward partials
-            for await (const partial of partialObjectStream) {
-              try {
-                controller.enqueue(encoder.encode(`event: json.partial\n`))
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(partial)}\n\n`))
-              } catch {}
-            }
-
-            const finalObj = await object
             console.log('[slideshow-generate] JSON generation successful, object keys:', Object.keys(finalObj || {}))
-            // Map image refs (ids) to proxied URLs for client rendering
+            console.log('[slideshow-generate] Slides structure:', typeof (finalObj as any)?.slides, Array.isArray((finalObj as any)?.slides))
+            
+            // Validate and fix slides structure if needed
+            if (finalObj && typeof (finalObj as any).slides === 'object' && !Array.isArray((finalObj as any).slides)) {
+              console.log('[slideshow-generate] WARNING: AI returned single slide object instead of array, wrapping in array')
+              ;(finalObj as any).slides = [(finalObj as any).slides]
+            }
+            
+            // Fix texts and overlays structure (ensure they're arrays)
+            if (finalObj && Array.isArray((finalObj as any).slides)) {
+              ;(finalObj as any).slides = (finalObj as any).slides.map((slide: any) => ({
+                ...slide,
+                texts: Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : []),
+                overlays: Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])
+              }))
+              console.log('[slideshow-generate] Fixed texts/overlays structure, final slide count:', (finalObj as any).slides.length)
+            }
+            
+            // Map prompt-local refs to UUIDs then to proxied URLs for client rendering
             let mappedObj = finalObj
+            console.log('[slideshow-generate] Collection ref map:', Object.fromEntries(collectionRefMap))
+            console.log('[slideshow-generate] Product ref map:', Object.fromEntries(productRefMap))
             try {
-              const collectIds = () => {
-                const ids = new Set<string>()
+              const collectUUIDs = () => {
+                const uuids = new Set<string>()
                 const slides = (finalObj as any)?.slides
                 if (Array.isArray(slides)) {
                   for (const s of slides) {
-                    const bg = s?.background_image_ref
-                    if (typeof bg === 'string' && bg.length > 0) ids.add(bg)
+                    const bgRef = s?.background_image_ref
+                    if (typeof bgRef === 'string' && collectionRefMap.has(bgRef)) {
+                      uuids.add(collectionRefMap.get(bgRef)!)
+                    }
                     const ovs = s?.overlays
                     if (Array.isArray(ovs)) {
                       for (const o of ovs) {
-                        const ir = o?.image_ref
-                        if (typeof ir === 'string' && ir.length > 0) ids.add(ir)
+                        const imgRef = o?.image_ref
+                        if (typeof imgRef === 'string' && productRefMap.has(imgRef)) {
+                          uuids.add(productRefMap.get(imgRef)!)
+                        }
                       }
                     }
                   }
                 }
-                return Array.from(ids)
+                return Array.from(uuids)
               }
-              const allIds = collectIds()
-              if (allIds.length > 0) {
+              
+              const allUUIDs = collectUUIDs()
+              if (allUUIDs.length > 0) {
                 const [imgRes, prodImgRes] = await Promise.all([
                   supabase
                     .from('images')
                     .select('id, storage_path, file_path')
-                    .in('id', allIds),
+                    .in('id', allUUIDs),
                   supabase
                     .from('product_images')
                     .select('id, storage_path')
-                    .in('id', allIds),
+                    .in('id', allUUIDs),
                 ])
 
                 const rowsA = imgRes.data || []
                 const rowsB = prodImgRes.data || []
-                const idToUrl = new Map<string, string>()
+                const uuidToUrl = new Map<string, string>()
                 const toUrl = (p?: string | null) => (p ? `/api/storage/user-images?path=${encodeURIComponent(p)}` : '')
                 for (const r of rowsA as any[]) {
                   const path = r.storage_path || r.file_path
                   const url = toUrl(path)
-                  if (url) idToUrl.set(r.id as string, url)
+                  if (url) uuidToUrl.set(r.id as string, url)
                 }
                 for (const r of rowsB as any[]) {
                   const path = r.storage_path
                   const url = toUrl(path)
-                  if (url) idToUrl.set(r.id as string, url)
+                  if (url) uuidToUrl.set(r.id as string, url)
                 }
 
                 const slides = (finalObj as any)?.slides
@@ -484,14 +604,14 @@ export async function POST(req: NextRequest) {
                     ...(finalObj as any),
                     slides: slides.map((s: any) => ({
                       ...s,
-                      background_image_ref: typeof s.background_image_ref === 'string' && idToUrl.has(s.background_image_ref)
-                        ? idToUrl.get(s.background_image_ref)
+                      background_image_ref: typeof s.background_image_ref === 'string' && collectionRefMap.has(s.background_image_ref)
+                        ? uuidToUrl.get(collectionRefMap.get(s.background_image_ref)!) || s.background_image_ref
                         : s.background_image_ref,
                       overlays: Array.isArray(s.overlays)
                         ? s.overlays.map((o: any) => ({
                             ...o,
-                            image_ref: typeof o.image_ref === 'string' && idToUrl.has(o.image_ref)
-                              ? idToUrl.get(o.image_ref)
+                            image_ref: typeof o.image_ref === 'string' && productRefMap.has(o.image_ref)
+                              ? uuidToUrl.get(productRefMap.get(o.image_ref)!) || o.image_ref
                               : o.image_ref,
                           }))
                         : s.overlays,
@@ -500,7 +620,7 @@ export async function POST(req: NextRequest) {
                 }
               }
             } catch (mapErr) {
-              console.error('[slideshow-generate] Failed to map image refs to URLs:', mapErr)
+              console.error('[slideshow-generate] Failed to map refs to URLs:', mapErr)
             }
             try {
               const meta = await response

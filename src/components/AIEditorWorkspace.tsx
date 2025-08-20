@@ -392,13 +392,16 @@ export default function AIEditorWorkspace() {
       alert('Invalid JSON');
       return;
     }
-    if (!data || !Array.isArray(data.slides)) {
+    const rawSlides: any[] = Array.isArray((data as any).slides)
+      ? ((data as any).slides as any[])
+      : ((data as any).slides ? [((data as any).slides as any)] : []);
+    if (!data || rawSlides.length === 0) {
       alert('JSON must contain slides');
       return;
     }
 
     const createdAt = new Date().toISOString();
-    const newSlides: Slide[] = data.slides.map((slide, idx) => {
+    const newSlides: Slide[] = rawSlides.map((slide: any, idx: number) => {
       const slideId = `json-slide-${Date.now()}-${idx}`;
       return {
         id: slideId,
@@ -406,8 +409,8 @@ export default function AIEditorWorkspace() {
         duration_seconds: 3,
         index: idx,
         created_at: createdAt,
-        backgroundImage: slide.background_image_ref || undefined,
-        texts: (slide.texts || []).map((t, tIdx) => ({
+        backgroundImage: slide.background_image_url || slide.background_image_ref || undefined,
+        texts: (Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [])).map((t: any, tIdx: number) => ({
           id: `${slideId}-text-${tIdx}`,
           slide_id: slideId,
           text: t.text,
@@ -418,7 +421,7 @@ export default function AIEditorWorkspace() {
           font: '"proxima-nova", sans-serif',
           created_at: createdAt
         })),
-        overlays: (slide.overlays || []).map((o, oIdx) => ({
+        overlays: (Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])).map((o: any, oIdx: number) => ({
           id: `${slideId}-overlay-${oIdx}`,
           slide_id: slideId,
           image_id: '',
@@ -427,7 +430,7 @@ export default function AIEditorWorkspace() {
           rotation: o.rotation,
           size: o.size,
           created_at: createdAt,
-          imageUrl: o.image_ref
+          imageUrl: o.image_url || o.image_ref
         }))
       };
     });
@@ -503,8 +506,22 @@ export default function AIEditorWorkspace() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio: selectedAspectRatio }),
               });
-              if (!res.ok || !res.body) {
+              if (!res.ok) {
+                // Try to parse JSON error response
+                try {
+                  const errorData = await res.json();
+                  if (errorData.error) {
+                    alert(errorData.error);
+                    return;
+                  }
+                } catch {
+                  // Fall back to generic error
+                }
                 setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                return;
+              }
+              if (!res.body) {
+                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
                 return;
               }
               const reader = res.body.getReader();
