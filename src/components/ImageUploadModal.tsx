@@ -50,6 +50,10 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (files: FileList | null) => {
+    if (uploading) {
+      setError('Please wait for the current upload to finish before adding more images.');
+      return;
+    }
     if (!files || files.length === 0) return;
 
     // Convert FileList to Array for easier handling
@@ -116,17 +120,20 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploading) return;
     setIsDragOver(false);
     handleFileSelect(e.dataTransfer.files);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploading) return;
     setIsDragOver(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploading) return;
     setIsDragOver(false);
   };
 
@@ -159,6 +166,7 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
   useEscapeKey(handleClose, isOpen);
 
   const handleFileInputClick = () => {
+    if (uploading) return;
     fileInputRef.current?.click();
   };
 
@@ -205,7 +213,7 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
               isDragOver
                 ? 'border-[var(--color-primary)] bg-[var(--color-bg-tertiary)]'
                 : 'border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-secondary)]'
-            } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            } ${uploading ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
           >
             <div className="flex flex-col items-center">
               {uploading ? (

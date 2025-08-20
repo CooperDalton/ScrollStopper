@@ -1,12 +1,34 @@
 'use client';
 
 import React from 'react';
+import AspectRatioPicker from '@/components/editor/AspectRatioPicker';
 import { useProducts } from '@/hooks/useProducts';
 
-export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () => void; onAddRow?: () => void }) {
+export default function AISidebar({
+  onGenerate,
+  onAddRow,
+  onGenerateFromJson,
+  onRunGenerate,
+  jsonValue,
+  onJsonChange,
+  onSelectImages,
+  aspectRatio,
+  onAspectRatioChange,
+}: {
+  onGenerate?: () => void;
+  onAddRow?: () => void;
+  onGenerateFromJson?: (json: string) => void;
+  onRunGenerate?: (args: { productId: string; prompt: string }) => void;
+  jsonValue?: string;
+  onJsonChange?: (value: string) => void;
+  onSelectImages?: () => void;
+  aspectRatio?: string;
+  onAspectRatioChange?: (val: string) => void;
+}) {
   const { products, isLoading, isError } = useProducts();
   const [prompt, setPrompt] = React.useState('');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('');
+  const [jsonInput, setJsonInput] = React.useState('');
 
   const PROMPT_KEY = 'aiEditorPrompt';
   const PRODUCT_KEY = 'aiEditorSelectedProductId';
@@ -60,24 +82,39 @@ export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () =>
         <label className="text-sm font-medium text-[var(--color-text)]" htmlFor="ai-product">
           Product
         </label>
-        {isLoading ? (
-          <div className="text-sm text-[var(--color-text-muted)]">Loading products…</div>
-        ) : isError ? (
-          <div className="text-sm text-red-500">Failed to load products</div>
-        ) : (
-          <select
-            id="ai-product"
-            value={selectedProductId}
-            onChange={(e) => setSelectedProductId(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        <div className="flex items-center gap-2">
+          {isLoading ? (
+            <div className="text-sm text-[var(--color-text-muted)]">Loading products…</div>
+          ) : isError ? (
+            <div className="text-sm text-red-500">Failed to load products</div>
+          ) : (
+            <select
+              id="ai-product"
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              className="flex-1 px-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            >
+              {products.map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <AspectRatioPicker
+            value={aspectRatio || '9:16'}
+            onChange={(val) => onAspectRatioChange?.(val)}
+          />
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => onSelectImages?.()}
+            className="mt-2 w-full p-3 bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
           >
-            {products.map((p: any) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
+            Select Images
+          </button>
+        </div>
       </div>
 
       <div className="p-4 border-b border-[var(--color-border)] space-y-2">
@@ -93,7 +130,34 @@ export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () =>
         />
       </div>
 
+      <div className="p-4 border-b border-[var(--color-border)] space-y-2">
+        <label className="text-sm font-medium text-[var(--color-text)]" htmlFor="ai-json">
+          Slideshow JSON
+        </label>
+        <textarea
+          id="ai-json"
+          value={jsonValue !== undefined ? jsonValue : jsonInput}
+          onChange={(e) => {
+            if (jsonValue !== undefined && onJsonChange) onJsonChange(e.target.value);
+            else setJsonInput(e.target.value);
+          }}
+          placeholder="Paste slideshow JSON here"
+          className="w-full min-h-28 p-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        />
+      </div>
+
       <div className="p-4 mt-auto border-t border-[var(--color-border)] space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            const value = jsonValue !== undefined ? jsonValue : jsonInput;
+            onGenerateFromJson?.(value);
+          }}
+          className="w-full p-3 bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        >
+          Generate from JSON
+        </button>
+
         {/* Temporary button to add a new row above current rows */}
         <button
           type="button"
@@ -104,7 +168,10 @@ export default function AISidebar({ onGenerate, onAddRow }: { onGenerate?: () =>
         </button>
         <button
           type="button"
-          onClick={() => { onGenerate?.(); }}
+          onClick={() => {
+            if (onRunGenerate) onRunGenerate({ productId: selectedProductId, prompt });
+            else onGenerate?.();
+          }}
           className="w-full p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Generate

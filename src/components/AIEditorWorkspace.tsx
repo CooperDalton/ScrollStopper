@@ -2,12 +2,40 @@
 
 import React from 'react';
 import AISidebar from '@/components/AISidebar';
+import ImageSelectionModal from '@/components/ImageSelectionModal';
+import CollectionSelectionModal from '@/components/CollectionSelectionModal';
 import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/editor/SlidesRow';
 import SlidesList from '@/components/editor/SlidesList';
 import EmptyState from '@/components/editor/EmptyState';
 import { fabric } from 'fabric';
 import { animateScrollX, animateScrollY, FAST_SCROLL_DURATION_X_MS, FAST_SCROLL_DURATION_Y_MS } from '@/lib/scroll';
 import type { Slide } from '@/hooks/useSlideshows';
+
+interface JSONText {
+  text: string;
+  position_x: number;
+  position_y: number;
+  size: number;
+}
+
+interface JSONOverlay {
+  image_ref: string;
+  position_x: number;
+  position_y: number;
+  rotation: number;
+  size: number;
+}
+
+interface JSONSlide {
+  background_image_ref?: string | null;
+  texts?: JSONText[];
+  overlays?: JSONOverlay[];
+}
+
+interface JSONSlideshow {
+  caption: string;
+  slides: JSONSlide[];
+}
 
 export default function AIEditorWorkspace() {
   // Local-only slideshow state (no Supabase/localStorage sync)
@@ -30,6 +58,38 @@ export default function AIEditorWorkspace() {
   const MINI_CANVAS_WIDTH = 200;
   const MINI_CANVAS_HEIGHT = Math.round(MINI_CANVAS_WIDTH / aspectRatio);
 
+  const getTextStyling = (fontSize: number = 24) => ({
+    fontFamily: '"proxima-nova", sans-serif',
+    fontWeight: '600',
+    fill: '#ffffff',
+    textAlign: 'center' as const,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    stroke: 'black',
+    charSpacing: -40,
+    lineHeight: 1.0,
+    fontSize
+  });
+
+  const scaleImageToFillCanvas = (
+    img: fabric.Image,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
+    const imgWidth = img.width || 1;
+    const imgHeight = img.height || 1;
+    const scale = Math.max(canvasWidth / imgWidth, canvasHeight / imgHeight);
+    img.set({ scaleX: scale, scaleY: scale });
+    const scaledWidth = imgWidth * scale;
+    const scaledHeight = imgHeight * scale;
+    img.set({
+      left: (canvasWidth - scaledWidth) / 2,
+      top: (canvasHeight - scaledHeight) / 2,
+      originX: 'left',
+      originY: 'top'
+    });
+  };
+
   // Fabric refs
   const canvasRefs = React.useRef<{ [key: string]: fabric.Canvas }>({});
   const miniCanvasRefs = React.useRef<{ [key: string]: fabric.Canvas }>({});
@@ -42,6 +102,13 @@ export default function AIEditorWorkspace() {
   // Thumbnail store for unselected slides
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
   const [verticalPad, setVerticalPad] = React.useState<number>(0);
+  const [aiThoughts, setAiThoughts] = React.useState<string>('');
+  const [slideshowJson, setSlideshowJson] = React.useState<string>('');
+  const [isSelectImagesOpen, setIsSelectImagesOpen] = React.useState<boolean>(false);
+  const [selectedImageIds, setSelectedImageIds] = React.useState<string[]>([]);
+  const [isSelectCollectionsOpen, setIsSelectCollectionsOpen] = React.useState<boolean>(false);
+  const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]);
+  const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
 
   const createPlaceholderThumbnail = React.useCallback((slideId: string) => {
     try {
@@ -190,6 +257,64 @@ export default function AIEditorWorkspace() {
       // Track the DOM element so we can avoid disposing when React is unmounting
       canvasElementRefs.current[slideId] = canvasElement;
       canvasRefs.current[slideId] = canvas;
+
+      const slide = rows.flat().find(s => s.id === slideId);
+      if (slide) {
+        if (slide.backgroundImage) {
+          fabric.Image.fromURL(
+            slide.backgroundImage,
+            (img: fabric.Image) => {
+              img.set({ selectable: false, evented: false });
+              scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+              canvas.add(img);
+              canvas.sendToBack(img);
+              canvas.renderAll();
+              try {
+                const dataUrl = canvas.toDataURL({ format: 'png' });
+                setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+              } catch {}
+            },
+            { crossOrigin: 'anonymous' }
+          );
+        }
+        slide.texts?.forEach((textData) => {
+          const fabricText = new fabric.IText(textData.text, {
+            ...getTextStyling(textData.size),
+            left: textData.position_x,
+            top: textData.position_y,
+            angle: textData.rotation || 0,
+          });
+          canvas.add(fabricText);
+        });
+        slide.overlays?.forEach((overlayData) => {
+          if (overlayData.imageUrl) {
+            fabric.Image.fromURL(
+              overlayData.imageUrl,
+              (img: fabric.Image) => {
+                img.set({
+                  left: overlayData.position_x,
+                  top: overlayData.position_y,
+                  scaleX: overlayData.size / 100,
+                  scaleY: overlayData.size / 100,
+                  angle: overlayData.rotation,
+                  originX: 'center',
+                  originY: 'center',
+                  selectable: false,
+                  evented: false,
+                });
+                canvas.add(img);
+                canvas.renderAll();
+                try {
+                  const dataUrl = canvas.toDataURL({ format: 'png' });
+                  setThumbnails(prev => ({ ...prev, [slideId]: dataUrl }));
+                } catch {}
+              },
+              { crossOrigin: 'anonymous' }
+            );
+          }
+        });
+      }
+
       canvas.renderAll();
       // After first render, capture a thumbnail for when this slide becomes mini
       try {
@@ -255,6 +380,72 @@ export default function AIEditorWorkspace() {
     centerSlide(newSlides[0].id, 100);
   };
 
+  const handleGenerateFromJson = (jsonString: string) => {
+    // Dispose existing canvases to avoid stale refs
+    Object.keys(canvasRefs.current).forEach(disposeCanvas);
+    Object.keys(miniCanvasRefs.current).forEach(disposeMiniCanvas);
+
+    let data: JSONSlideshow;
+    try {
+      data = JSON.parse(jsonString) as JSONSlideshow;
+    } catch {
+      alert('Invalid JSON');
+      return;
+    }
+    const rawSlides: any[] = Array.isArray((data as any).slides)
+      ? ((data as any).slides as any[])
+      : ((data as any).slides ? [((data as any).slides as any)] : []);
+    if (!data || rawSlides.length === 0) {
+      alert('JSON must contain slides');
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const newSlides: Slide[] = rawSlides.map((slide: any, idx: number) => {
+      const slideId = `json-slide-${Date.now()}-${idx}`;
+      return {
+        id: slideId,
+        slideshow_id: 'ai-local',
+        duration_seconds: 3,
+        index: idx,
+        created_at: createdAt,
+        backgroundImage: slide.background_image_url || slide.background_image_ref || undefined,
+        texts: (Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [])).map((t: any, tIdx: number) => ({
+          id: `${slideId}-text-${tIdx}`,
+          slide_id: slideId,
+          text: t.text,
+          position_x: t.position_x,
+          position_y: t.position_y,
+          size: t.size,
+          rotation: 0,
+          font: '"proxima-nova", sans-serif',
+          created_at: createdAt
+        })),
+        overlays: (Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])).map((o: any, oIdx: number) => ({
+          id: `${slideId}-overlay-${oIdx}`,
+          slide_id: slideId,
+          image_id: '',
+          position_x: o.position_x,
+          position_y: o.position_y,
+          rotation: o.rotation,
+          size: o.size,
+          created_at: createdAt,
+          imageUrl: o.image_url || o.image_ref
+        }))
+      };
+    });
+
+    setRows([newSlides]);
+    setActiveRowIndex(0);
+    if (newSlides.length > 0) {
+      setSelectedSlideId(newSlides[0].id);
+      centerSlide(newSlides[0].id, 100);
+    }
+    setSlideRenderKey(prev => prev + 1);
+    setIsEditorCleared(false);
+    ensureThumbnailsForSlides(newSlides.map(s => s.id));
+  };
+
   const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
     // Dispose other full canvases to keep one active at a time
     Object.keys(canvasRefs.current).forEach(id => {
@@ -303,10 +494,96 @@ export default function AIEditorWorkspace() {
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden flex-1">
-      <AISidebar onGenerate={handleGenerate} onAddRow={handleAddRow} />
+      <AISidebar
+        onAddRow={handleAddRow}
+        onGenerateFromJson={handleGenerateFromJson}
+        onRunGenerate={({ productId, prompt }) => {
+          try {
+            setAiThoughts('');
+            const run = async () => {
+              const res = await fetch('/api/slideshows/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio: selectedAspectRatio }),
+              });
+              if (!res.ok) {
+                // Try to parse JSON error response
+                try {
+                  const errorData = await res.json();
+                  if (errorData.error) {
+                    alert(errorData.error);
+                    return;
+                  }
+                } catch {
+                  // Fall back to generic error
+                }
+                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                return;
+              }
+              if (!res.body) {
+                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
+                return;
+              }
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunkText = decoder.decode(value, { stream: true });
+                // Append raw for visibility
+                setAiThoughts(prev => prev + chunkText);
+                buffer += chunkText;
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+                for (const part of parts) {
+                  const lines = part.split('\n');
+                  let eventType = '';
+                  let data = '';
+                  for (const line of lines) {
+                    if (line.startsWith('event:')) eventType = line.slice(6).trim();
+                    else if (line.startsWith('data:')) data += line.slice(5);
+                  }
+                  if (eventType === 'thought') {
+                    setAiThoughts(prev => prev + data);
+                  } else if (eventType === 'thoughtln') {
+                    setAiThoughts(prev => (prev ? prev + '\n' : '') + data);
+                  } else if (eventType === 'json') {
+                    try {
+                      const obj = JSON.parse(data);
+                      setSlideshowJson(JSON.stringify(obj, null, 2));
+                    } catch {}
+                  } else if (eventType === 'json.partial') {
+                    try {
+                      const partial = JSON.parse(data);
+                      setSlideshowJson(JSON.stringify(partial, null, 2));
+                    } catch {}
+                  }
+                }
+              }
+            };
+            run();
+          } catch (e) {
+            setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
+          }
+        }}
+        jsonValue={slideshowJson}
+        onJsonChange={setSlideshowJson}
+        onSelectImages={() => setIsSelectCollectionsOpen(true)}
+        aspectRatio={selectedAspectRatio}
+        onAspectRatioChange={setSelectedAspectRatio}
+      />
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
+            {/* AI Thoughts Floating Text Box */}
+            <div className="absolute bottom-4 left-4 z-10 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
+              <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">AI Thoughts</div>
+              <div className="text-sm text-[var(--color-text)] font-mono whitespace-pre-wrap max-h-64 overflow-auto pr-1">
+                {aiThoughts || 'Ready to generate slideshows...'}
+              </div>
+            </div>
+            
             {/* Single seamless scrollable area handling both horizontal and vertical centering */}
             <div ref={verticalScrollRef} className="absolute inset-0 overflow-auto scrollbar-hide">
               {rows.length > 0 && !isEditorCleared ? (
@@ -352,6 +629,15 @@ export default function AIEditorWorkspace() {
           </div>
         </div>
       </div>
+      <CollectionSelectionModal
+        isOpen={isSelectCollectionsOpen}
+        onClose={() => setIsSelectCollectionsOpen(false)}
+        onSelect={(ids) => {
+          setSelectedCollectionIds(ids)
+          setIsSelectCollectionsOpen(false)
+        }}
+        title="Select Collections for AI Generation"
+      />
     </div>
   );
 }
