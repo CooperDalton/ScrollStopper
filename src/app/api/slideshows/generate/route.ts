@@ -100,18 +100,36 @@ export async function POST(req: NextRequest) {
     let extraCollectionImages: any[] = []
     if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
       console.log('[slideshow-generate] Fetching images from selected collections:', selectedCollectionIds)
+      console.log('[slideshow-generate] User ID:', user.id)
+      
+      // First, check if the collections exist and belong to the user
+      const { data: collectionsCheck } = await supabase
+        .from('image_collections')
+        .select('id, name, user_id')
+        .in('id', selectedCollectionIds)
+        .eq('user_id', user.id)
+      console.log('[slideshow-generate] Collections found:', collectionsCheck?.length || 0, collectionsCheck)
+      
       const extraQuery = supabase
         .from('images')
-        .select('id, metadata, collection_id')
+        .select('id, metadata, collection_id, storage_path, user_id')
         .in('collection_id', selectedCollectionIds)
-      const { data: extraData } = await extraQuery
+        .eq('user_id', user.id)
+      const { data: extraData, error: queryError } = await extraQuery
+      
+      if (queryError) {
+        console.error('[slideshow-generate] Query error:', queryError)
+      }
+      console.log('[slideshow-generate] Raw query result:', extraData?.length || 0, 'images')
+      
       extraCollectionImages = extraData || []
       // Optional filtering by explicitly selectedImageIds
       if (Array.isArray(selectedImageIds) && selectedImageIds.length > 0) {
         const selectedSet = new Set<string>(selectedImageIds)
         extraCollectionImages = extraCollectionImages.filter((img: any) => selectedSet.has(img.id))
+        console.log('[slideshow-generate] After filtering by selectedImageIds:', extraCollectionImages.length)
       }
-      console.log('[slideshow-generate] Found', extraCollectionImages.length, 'extra collection images')
+      console.log('[slideshow-generate] Final collection images count:', extraCollectionImages.length)
     }
 
     // Build product images context with prompt-local refs
@@ -491,56 +509,99 @@ Return ONLY the JSON object. No explanations, no markdown.`
             return
           }
           
-          const SlideshowSchema = createSlideshowSchema(collectionRefs, productRefs)
+          // Create simplified schema with explicit slide count
+          const createSimplifiedSchema = () => {
+            return z.object({
+              caption: z.string().describe("Overall caption for the slideshow"),
+              slides: z.array(z.object({
+                background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
+                texts: z.array(z.object({
+                  text: z.string().describe("Text content for the slide"),
+                  position_x: z.number().min(0).max(CANVAS_WIDTH).describe(`0-${CANVAS_WIDTH} pixels right`),
+                  position_y: z.number().min(0).max(CANVAS_MAX_HEIGHT).describe(`0-${CANVAS_MAX_HEIGHT} pixels down`),
+                  size: z.number().min(24).max(60).describe("24-60 pixel size"),
+                })).min(1).describe("Array of text overlays - at least one required"),
+                overlays: z.array(z.object({
+                  image_ref: productRefs.length > 0 
+                    ? z.enum(productRefs as [string, ...string[]]).describe("Product image ref for overlay")
+                    : z.string().describe("Product image ref for overlay"),
+                  position_x: z.number().min(0).max(CANVAS_WIDTH).describe(`0-${CANVAS_WIDTH} pixels right`),
+                  position_y: z.number().min(0).max(CANVAS_MAX_HEIGHT).describe(`0-${CANVAS_MAX_HEIGHT} pixels down`),
+                  rotation: z.number().min(0).max(360).describe("0-360 degrees"),
+                  size: z.number().min(10).max(100).describe("10-100 size percentage")
+                })).describe("Array of image overlays - usually empty"),
+              })).min(slideCount).max(slideCount).describe(`MUST contain exactly ${slideCount} slide objects`),
+            })
+          }
           
-          // Update schema field descriptions with computed bounds
-          const SchemaWithHints = SlideshowSchema.extend({
-            slides: SlideshowSchema.shape.slides.element.extend({
-              texts: SlideshowSchema.shape.slides.element.shape.texts.element.extend({
-                position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
-                position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
-                size: z.number().describe('24-60 pixel size'),
-              }),
-              overlays: SlideshowSchema.shape.slides.element.shape.overlays.element.extend({
-                position_x: z.number().describe(`0-${CANVAS_WIDTH} pixels right (where 0 is left edge)`),
-                position_y: z.number().describe(`0-${CANVAS_MAX_HEIGHT} pixels down (where 0 is top edge)`),
-                rotation: z.number().describe('0-360 degrees'),
-                size: z.number().describe('10-100 size percentage')
-              }),
-            }),
-          })
-          console.log('[slideshow-generate] Calling streamObject for structured JSON')
+          const SchemaWithHints = createSimplifiedSchema()
+          console.log('[slideshow-generate] Schema created for', slideCount, 'slides')
+          console.log('[slideshow-generate] Collection refs available:', collectionRefs.length)
+          console.log('[slideshow-generate] Product refs available:', productRefs.length)
+          console.log('[slideshow-generate] Calling generateObject for structured JSON')
 
           try {
-            // Try generateObject for better schema compliance
+            // Try generateObject with explicit maxRetries
             const { object: finalObj, response, usage } = await generateObject({
               model: google("models/gemini-2.5-flash"),
               schema: SchemaWithHints,
               schemaName: 'Slideshow',
-              schemaDescription: `A slideshow with exactly ${slideCount} slides in array format.`,
+              schemaDescription: `A slideshow with exactly ${slideCount} slides in array format. The slides array MUST contain ${slideCount} slide objects.`,
               messages: [
                 { role: 'system', content: systemJson },
                 { role: 'user', content: userJson },
               ],
+              maxRetries: 3,
             })
             console.log('[slideshow-generate] JSON generation successful, object keys:', Object.keys(finalObj || {}))
             console.log('[slideshow-generate] Slides structure:', typeof (finalObj as any)?.slides, Array.isArray((finalObj as any)?.slides))
             
-            // Validate and fix slides structure if needed
-            if (finalObj && typeof (finalObj as any).slides === 'object' && !Array.isArray((finalObj as any).slides)) {
-              console.log('[slideshow-generate] WARNING: AI returned single slide object instead of array, wrapping in array')
-              ;(finalObj as any).slides = [(finalObj as any).slides]
+            // Extensive validation and repair
+            if (!finalObj || typeof finalObj !== 'object') {
+              throw new Error('AI returned invalid object')
+            }
+            
+            // Ensure slides is an array
+            if (!Array.isArray((finalObj as any).slides)) {
+              console.log('[slideshow-generate] WARNING: slides is not an array, attempting to fix')
+              if (typeof (finalObj as any).slides === 'object' && (finalObj as any).slides !== null) {
+                console.log('[slideshow-generate] Wrapping single slide object in array')
+                ;(finalObj as any).slides = [(finalObj as any).slides]
+              } else {
+                console.log('[slideshow-generate] No valid slides found, creating minimal slides')
+                ;(finalObj as any).slides = Array.from({ length: slideCount }, (_, i) => ({
+                  background_image_ref: collectionRefs[i % collectionRefs.length],
+                  texts: [{ text: `Slide ${i + 1}`, position_x: 50, position_y: 100, size: 40 }],
+                  overlays: []
+                }))
+              }
+            }
+            
+            // Ensure we have the right number of slides
+            const currentSlides = (finalObj as any).slides as any[]
+            if (currentSlides.length < slideCount) {
+              console.log(`[slideshow-generate] WARNING: Only ${currentSlides.length} slides generated, duplicating to reach ${slideCount}`)
+              while (currentSlides.length < slideCount) {
+                const template = currentSlides[currentSlides.length % currentSlides.length]
+                currentSlides.push({
+                  ...template,
+                  background_image_ref: collectionRefs[currentSlides.length % collectionRefs.length]
+                })
+              }
+            } else if (currentSlides.length > slideCount) {
+              console.log(`[slideshow-generate] WARNING: ${currentSlides.length} slides generated, truncating to ${slideCount}`)
+              ;(finalObj as any).slides = currentSlides.slice(0, slideCount)
             }
             
             // Fix texts and overlays structure (ensure they're arrays)
-            if (finalObj && Array.isArray((finalObj as any).slides)) {
-              ;(finalObj as any).slides = (finalObj as any).slides.map((slide: any) => ({
-                ...slide,
-                texts: Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : []),
-                overlays: Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])
-              }))
-              console.log('[slideshow-generate] Fixed texts/overlays structure, final slide count:', (finalObj as any).slides.length)
-            }
+            ;(finalObj as any).slides = (finalObj as any).slides.map((slide: any, index: number) => ({
+              ...slide,
+              background_image_ref: slide.background_image_ref || collectionRefs[index % collectionRefs.length],
+              texts: Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [{ text: `Slide ${index + 1}`, position_x: 50, position_y: 100, size: 40 }]),
+              overlays: Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])
+            }))
+            
+            console.log('[slideshow-generate] Final validation complete, slide count:', (finalObj as any).slides.length)
             
             // Map prompt-local refs to UUIDs then to proxied URLs for client rendering
             let mappedObj = finalObj
@@ -571,42 +632,55 @@ Return ONLY the JSON object. No explanations, no markdown.`
               }
               
               const allUUIDs = collectUUIDs()
-              if (allUUIDs.length > 0) {
-                const [imgRes, prodImgRes] = await Promise.all([
-                  supabase
-                    .from('images')
-                    .select('id, storage_path, file_path')
-                    .in('id', allUUIDs),
-                  supabase
-                    .from('product_images')
-                    .select('id, storage_path')
-                    .in('id', allUUIDs),
-                ])
-
-                const rowsA = imgRes.data || []
-                const rowsB = prodImgRes.data || []
-                const uuidToUrl = new Map<string, string>()
-                const toUrl = (p?: string | null) => (p ? `/api/storage/user-images?path=${encodeURIComponent(p)}` : '')
-                for (const r of rowsA as any[]) {
-                  const path = r.storage_path || r.file_path
+              console.log('[slideshow-generate] Collected UUIDs for mapping:', allUUIDs)
+              
+              // Use the data we already fetched - no need to query again!
+              const uuidToUrl = new Map<string, string>()
+              const toUrl = (p?: string | null) => (p ? `/api/storage/user-images?path=${encodeURIComponent(p)}` : '')
+              
+              // Map collection images using data we already have
+              for (const img of extraCollectionImages) {
+                const imgId = (img as any).id as string
+                const path = (img as any).storage_path
+                if (allUUIDs.includes(imgId) && path) {
                   const url = toUrl(path)
-                  if (url) uuidToUrl.set(r.id as string, url)
+                  if (url) {
+                    uuidToUrl.set(imgId, url)
+                    console.log('[slideshow-generate] Mapped collection UUID to URL:', imgId, '->', url.substring(0, 50) + '...')
+                  }
                 }
-                for (const r of rowsB as any[]) {
-                  const path = r.storage_path
+              }
+              
+              // Map product images (if any)
+              for (const img of images || []) {
+                const imgId = (img as any).id as string
+                const path = (img as any).storage_path
+                if (allUUIDs.includes(imgId) && path) {
                   const url = toUrl(path)
-                  if (url) uuidToUrl.set(r.id as string, url)
+                  if (url) {
+                    uuidToUrl.set(imgId, url)
+                    console.log('[slideshow-generate] Mapped product UUID to URL:', imgId, '->', url.substring(0, 50) + '...')
+                  }
                 }
+              }
+              
+              console.log('[slideshow-generate] Total URLs mapped:', uuidToUrl.size)
 
-                const slides = (finalObj as any)?.slides
-                if (Array.isArray(slides)) {
-                  mappedObj = {
-                    ...(finalObj as any),
-                    slides: slides.map((s: any) => ({
+              const slides = (finalObj as any)?.slides
+              if (Array.isArray(slides)) {
+                mappedObj = {
+                  ...(finalObj as any),
+                  slides: slides.map((s: any, index: number) => {
+                    const bgRef = s.background_image_ref
+                    const mappedBg = typeof bgRef === 'string' && collectionRefMap.has(bgRef)
+                      ? uuidToUrl.get(collectionRefMap.get(bgRef)!) || bgRef
+                      : bgRef
+                    
+                    console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> ${mappedBg === bgRef ? 'NOT MAPPED' : 'MAPPED'}`)
+                    
+                    return {
                       ...s,
-                      background_image_ref: typeof s.background_image_ref === 'string' && collectionRefMap.has(s.background_image_ref)
-                        ? uuidToUrl.get(collectionRefMap.get(s.background_image_ref)!) || s.background_image_ref
-                        : s.background_image_ref,
+                      background_image_ref: mappedBg,
                       overlays: Array.isArray(s.overlays)
                         ? s.overlays.map((o: any) => ({
                             ...o,
@@ -615,8 +689,8 @@ Return ONLY the JSON object. No explanations, no markdown.`
                               : o.image_ref,
                           }))
                         : s.overlays,
-                    })),
-                  }
+                    }
+                  }),
                 }
               }
             } catch (mapErr) {
