@@ -13,6 +13,7 @@ import TextResizeOverlay from '@/components/editor/TextResizeOverlay';
 import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/editor/SlidesRow';
 import SlidesList from '@/components/editor/SlidesList';
 import { scaleImageToFillCanvas, loadFabricImage } from '@/components/editor/fabricUtils';
+import { FONT_SIZES, STROKE_WIDTHS, MAX_CHARS_PER_LINE, getStrokeWidthForFontSize, TEXT_STYLING } from '@/lib/text-config';
 import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
@@ -174,23 +175,9 @@ export default function SlideshowEditor() {
     return w && h ? w / h : 9 / 16;
   };
   
-  // Preset sizing options for text
-  const fontSizes = [20, 24, 32, 40, 48, 56, 64];
-  const strokeWidths = [0.5, 0.5, 1, 1, 1, 1, 1];
-  
-  // Helper function to get stroke width from the strokeWidths array based on font size
-  const getStrokeWidthForFontSize = (fontSize: number) => {
-    const index = fontSizes.indexOf(fontSize);
-    return index !== -1 ? strokeWidths[index] : strokeWidths[0]; // Default to first stroke width if not found
-  };
-  
   // Reusable function to get text styling properties
   const getTextStyling = (fontSize: number = 24) => ({
-    fontFamily: '"proxima-nova", sans-serif',
-    fontWeight: '600',
-    fontStyle: 'normal',
-    fill: '#ffffff',
-    textAlign: 'center' as const,
+    ...TEXT_STYLING,
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
@@ -246,8 +233,8 @@ export default function SlideshowEditor() {
     const currentSize = obj.fontSize || 24;
     const findNearestIndex = (size: number) => {
       let nearest = 0;
-      for (let i = 1; i < fontSizes.length; i++) {
-        if (Math.abs(fontSizes[i] - size) < Math.abs(fontSizes[nearest] - size)) {
+      for (let i = 1; i < FONT_SIZES.length; i++) {
+        if (Math.abs(FONT_SIZES[i] - size) < Math.abs(FONT_SIZES[nearest] - size)) {
           nearest = i;
         }
       }
@@ -255,11 +242,11 @@ export default function SlideshowEditor() {
     };
     const currentIndex = findNearestIndex(currentSize);
     const newIndex = Math.min(
-      fontSizes.length - 1,
+      FONT_SIZES.length - 1,
       Math.max(0, currentIndex + (delta > 0 ? 1 : -1))
     );
-    const newSize = fontSizes[newIndex];
-    const newStroke = strokeWidths[newIndex];
+    const newSize = FONT_SIZES[newIndex];
+    const newStroke = STROKE_WIDTHS[newIndex];
     obj.set({ fontSize: newSize, scaleX: 1, scaleY: 1 });
     obj.set('strokeWidth', newStroke);
     obj.setCoords();

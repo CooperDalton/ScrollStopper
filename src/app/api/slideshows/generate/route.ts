@@ -4,6 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { google } from "@ai-sdk/google"
 import { generateObject, streamText, NoObjectGeneratedError, streamObject, tool, stepCountIs } from 'ai'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { FONT_SIZES, getMaxCharsForFontSize } from '@/lib/text-config'
 
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
@@ -14,8 +15,8 @@ const openai = createOpenAI()
 const MAX_TOOL_ROUNDS = 6
 const MAX_LONGS_PER_ROUND = 40
 
-// Base schema - will be enhanced with dynamic enums
-const createSlideshowSchema = (collectionRefs: string[], productRefs: string[]) => {
+// Slideshow schema factory
+const createSlideshowSchema = (collectionRefs: string[], productRefs: string[], slideCount: number, canvasWidth: number, canvasMaxHeight: number) => {
   // Ensure we have at least one collection image for backgrounds
   if (collectionRefs.length === 0) {
     throw new Error('At least one collection image is required for backgrounds')
@@ -23,30 +24,26 @@ const createSlideshowSchema = (collectionRefs: string[], productRefs: string[]) 
   
   return z.object({
     caption: z.string().describe("Overall caption for the slideshow"),
-    slides: z.array(
-      z.object({
-        background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
-        texts: z.array(
-          z.object({
-            text: z.string().describe("Text content for the slide"),
-            position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-            position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-            size: z.number().describe("24-60 pixel size"),
-          })
-        ).describe("Array of text overlays on this slide"),
-        overlays: z.array(
-          z.object({
-            image_ref: productRefs.length > 0 
-              ? z.enum(productRefs as [string, ...string[]]).describe("Product image ref for overlay")
-              : z.string().describe("Product image ref for overlay"),
-            position_x: z.number().describe("0-300 pixels right (where 0 is left edge)"),
-            position_y: z.number().describe("0-500 pixels down (where 0 is top edge)"),
-            rotation: z.number().describe("0-360 degrees"),
-            size: z.number().describe("10-100 size percentage")
-          })
-        ).describe("Array of image overlays on this slide (use sparingly, product images only)"),
-      })
-    ).min(1).describe("Array of slides - you MUST create multiple slides as requested"),
+    slides: z.array(z.object({
+      background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
+      texts: z.array(z.object({
+        text: z.string().describe("Text content for the slide - use \\n for line breaks within the same paragraph, don't split paragraphs into multiple text objects"),
+        position_x: z.number().min(0).max(canvasWidth).describe(`0-${canvasWidth} pixels right`),
+        position_y: z.number().min(0).max(canvasMaxHeight).describe(`0-${canvasMaxHeight} pixels down`),
+        size: z.number().refine((val) => FONT_SIZES.includes(val as any), {
+          message: `Font size must be one of: ${FONT_SIZES.join(', ')}`
+        }).describe(`Font size - must be one of: ${FONT_SIZES.join(', ')}`),
+      })).min(1).describe("Array of text overlays - at least one required"),
+      overlays: z.array(z.object({
+        image_ref: productRefs.length > 0 
+          ? z.enum(productRefs as [string, ...string[]]).describe("Product image ref for overlay")
+          : z.string().describe("Product image ref for overlay"),
+        position_x: z.number().min(0).max(canvasWidth).describe(`0-${canvasWidth} pixels right`),
+        position_y: z.number().min(0).max(canvasMaxHeight).describe(`0-${canvasMaxHeight} pixels down`),
+        rotation: z.number().min(0).max(360).describe("0-360 degrees"),
+        size: z.number().min(10).max(100).describe("10-100 size percentage")
+      })).describe("Array of image overlays - usually empty"),
+    })).min(slideCount).max(slideCount).describe(`MUST contain exactly ${slideCount} slide objects`),
   })
 }
 
@@ -377,6 +374,15 @@ export async function POST(req: NextRequest) {
       '- Only add overlays when they would significantly enhance the message or visual appeal',
       '- Use short refs like c01, p01 instead of full UUIDs - the system will map them automatically',
       '',
+      'Text Formatting Rules:',
+      `- Font sizes: Only use these exact values: ${FONT_SIZES.join(', ')}`,
+      '- CRITICAL: Character limits per line by font size (MUST follow exactly):',
+      ...FONT_SIZES.map(size => `  • ${size}px: MAX ${getMaxCharsForFontSize(size)} characters per line`),
+      '- When text exceeds character limits, use \\n within the SAME text object for line breaks',
+      '- DO NOT split a single paragraph/sentence into multiple text objects',
+      '- Multiple text objects should only be used for distinctly different text elements (e.g., title + body)',
+      '- Each line after \\n must also respect the character limit for that font size',
+      '',
       'JSON Requirements:',
       '- slides MUST be an array, even for single slides',
       '- texts and overlays MUST be arrays within each slide',
@@ -448,10 +454,10 @@ REQUIRED JSON STRUCTURE:
       "background_image_ref": "c01",
       "texts": [
         {
-          "text": "string",
-          "position_x": number,
-          "position_y": number,
-          "size": number
+          "text": "Text on the slide",
+          "position_x": 150,
+          "position_y": 200,
+          "size": 32
         }
       ],
       "overlays": []
@@ -460,10 +466,10 @@ REQUIRED JSON STRUCTURE:
       "background_image_ref": "c02", 
       "texts": [
         {
-          "text": "string",
-          "position_x": number,
-          "position_y": number,
-          "size": number
+          "text": "Another slide text",
+          "position_x": 150,
+          "position_y": 200,
+          "size": 24
         }
       ],
       "overlays": []
@@ -478,6 +484,12 @@ CONSTRAINTS:
 - overlays: MUST be array (usually empty)
 - background_image_ref: Use collection refs (c01, c02, etc.)
 - Canvas: ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT}px
+- Font sizes: ONLY use these exact values: ${FONT_SIZES.join(', ')}
+- CRITICAL CHARACTER LIMITS: Each line must not exceed the character limit for its font size:
+  ${FONT_SIZES.map(size => `${size}px=MAX ${getMaxCharsForFontSize(size)} chars/line`).join(', ')}
+- Use \\n within a single text object when text exceeds character limits
+- DO NOT split paragraphs/sentences into multiple text objects - use \\n instead
+- Multiple text objects only for different elements (e.g., separate title and body text)
 
 Return ONLY the JSON object. No explanations, no markdown.`
           const userJson = [
@@ -509,32 +521,8 @@ Return ONLY the JSON object. No explanations, no markdown.`
             return
           }
           
-          // Create simplified schema with explicit slide count
-          const createSimplifiedSchema = () => {
-            return z.object({
-              caption: z.string().describe("Overall caption for the slideshow"),
-              slides: z.array(z.object({
-                background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
-                texts: z.array(z.object({
-                  text: z.string().describe("Text content for the slide"),
-                  position_x: z.number().min(0).max(CANVAS_WIDTH).describe(`0-${CANVAS_WIDTH} pixels right`),
-                  position_y: z.number().min(0).max(CANVAS_MAX_HEIGHT).describe(`0-${CANVAS_MAX_HEIGHT} pixels down`),
-                  size: z.number().min(24).max(60).describe("24-60 pixel size"),
-                })).min(1).describe("Array of text overlays - at least one required"),
-                overlays: z.array(z.object({
-                  image_ref: productRefs.length > 0 
-                    ? z.enum(productRefs as [string, ...string[]]).describe("Product image ref for overlay")
-                    : z.string().describe("Product image ref for overlay"),
-                  position_x: z.number().min(0).max(CANVAS_WIDTH).describe(`0-${CANVAS_WIDTH} pixels right`),
-                  position_y: z.number().min(0).max(CANVAS_MAX_HEIGHT).describe(`0-${CANVAS_MAX_HEIGHT} pixels down`),
-                  rotation: z.number().min(0).max(360).describe("0-360 degrees"),
-                  size: z.number().min(10).max(100).describe("10-100 size percentage")
-                })).describe("Array of image overlays - usually empty"),
-              })).min(slideCount).max(slideCount).describe(`MUST contain exactly ${slideCount} slide objects`),
-            })
-          }
-          
-          const SchemaWithHints = createSimplifiedSchema()
+          // Create schema with all constraints
+          const SchemaWithHints = createSlideshowSchema(collectionRefs, productRefs, slideCount, CANVAS_WIDTH, CANVAS_MAX_HEIGHT)
           console.log('[slideshow-generate] Schema created for', slideCount, 'slides')
           console.log('[slideshow-generate] Collection refs available:', collectionRefs.length)
           console.log('[slideshow-generate] Product refs available:', productRefs.length)
