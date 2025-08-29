@@ -75,7 +75,7 @@ export default function ProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { user } = useAuth();
-  const { products, isLoading, addProduct, updateProduct } = useProducts();
+  const { products, isLoading, addProduct, updateProduct, deleteProduct } = useProducts();
 
   const handleAddProduct = () => {
     setSelectedProduct(null);
@@ -93,6 +93,12 @@ export default function ProductsPage() {
   };
 
   const handleModalSuccess = () => {
+    // SWR will automatically refresh the data
+  };
+
+  const handleProductDeleted = () => {
+    setIsModalOpen(false);
+    setSelectedProduct(null);
     // SWR will automatically refresh the data
   };
 
@@ -164,6 +170,8 @@ export default function ProductsPage() {
         product={selectedProduct}
         addProduct={addProduct}
         updateProduct={updateProduct}
+        deleteProduct={deleteProduct}
+        onProductDeleted={handleProductDeleted}
       />
     </DashboardLayout>
   );

@@ -118,9 +118,6 @@ export default function ImagesPage() {
                         <h3 className="font-semibold text-[var(--color-text)] text-lg mb-1">
                           {collection.name}
                         </h3>
-                        <p className="text-sm text-[var(--color-text-muted)]">
-                          Created {new Date(collection.created_at).toLocaleDateString()}
-                        </p>
                       </div>
                       
                       <div className="flex items-center justify-between text-[var(--color-text-muted)]">
@@ -182,6 +179,11 @@ export default function ImagesPage() {
         onDelete={handleImageDelete}
         images={images}
         isLoading={imagesLoading}
+        onCollectionDeleted={() => {
+          setIsUploadModalOpen(false);
+          setSelectedCollection(null);
+          // Collections list will refresh automatically via SWR
+        }}
       />
     </DashboardLayout>
   );

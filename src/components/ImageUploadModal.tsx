@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { ImageCollection } from '@/lib/images';
 import { getImageUrl } from '@/lib/images';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useCollections } from '@/hooks/useCollections';
 
 interface ImageUploadModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface ImageUploadModalProps {
   onDelete: (imageId: string) => Promise<void>;
   images: Array<{ id: string; file_path?: string; storage_path?: string; created_at: string }>;
   isLoading?: boolean;
+  onCollectionDeleted?: () => void;
 }
 
 const XIcon = () => (
@@ -40,14 +42,23 @@ const TrashIcon = () => (
   </svg>
 );
 
-export default function ImageUploadModal({ isOpen, onClose, collection, onUpload, onBatchUpload, onDelete, images, isLoading }: ImageUploadModalProps) {
+const LargeTrashIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+export default function ImageUploadModal({ isOpen, onClose, collection, onUpload, onBatchUpload, onDelete, images, isLoading, onCollectionDeleted }: ImageUploadModalProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
   const [deletingImages, setDeletingImages] = useState<Set<string>>(new Set());
   const [uploadProgress, setUploadProgress] = useState<{total: number, completed: number, current?: string}>({ total: 0, completed: 0 });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const { removeCollection } = useCollections();
 
   const handleFileSelect = async (files: FileList | null) => {
     if (uploading) {
@@ -158,7 +169,22 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
       setError(null);
       setImageLoadErrors(new Set());
       setDeletingImages(new Set());
+      setShowDeleteConfirm(false);
       onClose();
+    }
+  };
+
+  const handleDeleteCollection = async () => {
+    if (!collection?.id) return;
+    
+    try {
+      await removeCollection(collection.id);
+      setShowDeleteConfirm(false);
+      onCollectionDeleted?.();
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete collection:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete collection');
     }
   };
 
@@ -193,13 +219,25 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
               Upload images to this collection
             </p>
           </div>
-          <button
-            onClick={handleClose}
-            disabled={uploading}
-            className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50"
-          >
-            <XIcon />
-          </button>
+          <div className="flex items-center gap-2">
+            {collection && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={uploading}
+                className="p-2 text-[var(--color-text-muted)] hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 hover:bg-opacity-10 disabled:opacity-50"
+                title="Delete collection"
+              >
+                <LargeTrashIcon />
+              </button>
+            )}
+            <button
+              onClick={handleClose}
+              disabled={uploading}
+              className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50"
+            >
+              <XIcon />
+            </button>
+          </div>
         </div>
 
         {/* Upload Area */}
@@ -350,6 +388,56 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && collection && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div 
+            className="relative bg-[var(--color-bg)] rounded-2xl border border-[var(--color-border)] p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-[var(--color-text)]">
+                Delete Collection
+              </h2>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-[var(--color-text)] mb-2">
+                Are you sure you want to delete <strong>"{collection.name}"</strong>?
+              </p>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                This action cannot be undone. All images in this collection will also be deleted.
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-bg-secondary)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCollection}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete Collection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

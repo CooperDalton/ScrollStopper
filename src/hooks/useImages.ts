@@ -1,7 +1,11 @@
 'use client';
 
 import useSWR, { mutate as mutateGlobal } from 'swr';
+import { useMemo } from 'react';
 import { Image, getCollectionImages, uploadImageToCollection, deleteImage, getImageUrl } from '@/lib/images';
+
+// Stable empty array to prevent unnecessary re-renders
+const EMPTY_IMAGES: any[] = [];
 
 export function useImages(collectionId: string | null) {
   const { data, error, isLoading, mutate } = useSWR<{ images: Image[], error: null }>(
@@ -208,8 +212,13 @@ export function useImages(collectionId: string | null) {
     mutateGlobal('collections');
   };
 
+  // Use a stable empty array reference to prevent unnecessary re-renders
+  const images = useMemo(() => {
+    return data?.images || EMPTY_IMAGES;
+  }, [data?.images]);
+
   return {
-    images: data?.images || [],
+    images,
     error,
     isLoading,
     uploadImage,

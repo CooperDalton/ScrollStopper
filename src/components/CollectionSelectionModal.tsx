@@ -20,10 +20,18 @@ const XIcon = () => (
 export default function CollectionSelectionModal({ isOpen, onClose, onSelect, title = 'Select Collections' }: CollectionSelectionModalProps) {
   const { collections, isLoading } = useCollections();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [hasLoadedInitialSelection, setHasLoadedInitialSelection] = useState<boolean>(false);
 
-  // Load saved selections when opening
+  // Load saved selections when opening (only once per modal open)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setHasLoadedInitialSelection(false);
+      return;
+    }
+    
+    // Only load once per modal opening and when collections are available
+    if (hasLoadedInitialSelection || collections.length === 0) return;
+    
     try {
       const raw = localStorage.getItem('aiEditorSelectedCollectionIds')
       if (raw) {
@@ -32,8 +40,11 @@ export default function CollectionSelectionModal({ isOpen, onClose, onSelect, ti
         const valid = ids.filter((id) => available.has(id))
         setSelected(new Set(valid))
       }
-    } catch {}
-  }, [isOpen, collections])
+      setHasLoadedInitialSelection(true);
+    } catch {
+      setHasLoadedInitialSelection(true);
+    }
+  }, [isOpen, collections.length, hasLoadedInitialSelection]) // Use collections.length instead of collections object
 
   const allIds = useMemo(() => new Set(collections.map((c: any) => c.id)), [collections]);
   const allSelected = selected.size > 0 && selected.size === allIds.size;

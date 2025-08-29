@@ -1,13 +1,21 @@
 import useSWR, { mutate } from 'swr'
+import { useMemo } from 'react'
 import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct, deleteProduct } from '@/lib/products'
+
+// Stable empty array to prevent unnecessary re-renders
+const EMPTY_PRODUCTS: Product[] = []
 
 // Fetcher function for SWR
 const fetcher = async (url: string) => {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error('Failed to fetch products')
+    throw new Error(`HTTP ${response.status}: Failed to fetch products`)
   }
-  return response.json()
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return response.json()
+  }
+  throw new Error(`Expected JSON response but got ${contentType || 'unknown content type'}`)
 }
 
 // SWR key for products
@@ -24,7 +32,11 @@ export function useProducts() {
     }
   )
 
-  const products = data?.products || []
+  // Use a stable empty array reference to prevent unnecessary re-renders  
+  const products = useMemo(() => {
+    return data?.products || EMPTY_PRODUCTS;
+  }, [data?.products]);
+  
   const isError = !!error
 
   // Add a product (optimistic update)

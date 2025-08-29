@@ -34,6 +34,8 @@ const ArrowLeftIcon = () => (
 
 
 
+
+
 export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, title = 'Select Background Image' }: ImageSelectionModalProps) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
@@ -217,6 +219,8 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
         <div className="flex justify-end mt-6 pt-4">
         </div>
       </div>
+
+
     </div>
   );
 } 

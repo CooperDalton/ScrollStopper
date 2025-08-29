@@ -11,7 +11,7 @@ import {
   getProductImages,
   uploadProductImage,
   updateProductImageDescription,
-    deleteProductImage,
+  deleteProductImage,
 } from '@/lib/products';
 import { getImageUrl } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
@@ -24,6 +24,8 @@ interface ProductModalProps {
   product?: Product | null; // If provided, we're editing; if null/undefined, we're adding
   addProduct?: (data: CreateProductData) => Promise<{ product: Product | null; error: Error | null }>;
   updateProduct?: (id: string, data: UpdateProductData) => Promise<{ product: Product | null; error: Error | null }>;
+  deleteProduct?: (id: string) => Promise<{ error: Error | null }>;
+  onProductDeleted?: () => void;
 }
 
 const CloseIcon = () => (
@@ -32,7 +34,13 @@ const CloseIcon = () => (
   </svg>
 );
 
-const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess, product, addProduct: swrAddProduct, updateProduct: swrUpdateProduct }) => {
+const LargeTrashIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess, product, addProduct: swrAddProduct, updateProduct: swrUpdateProduct, deleteProduct: swrDeleteProduct, onProductDeleted }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: ''
@@ -44,6 +52,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
   });
   
   const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Existing product images (edit mode only)
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [existingDescriptions, setExistingDescriptions] = useState<Record<string, string>>({});
@@ -99,15 +108,19 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
       }
       setErrors({ name: '', description: '' });
       setNewImages([]);
+      setShowDeleteConfirm(false);
     }
   }, [isOpen, product]);
 
-  // Enable escape key to close modal
-  useEscapeKey(() => {
+  const handleClose = () => {
     if (!isLoading) {
+      setShowDeleteConfirm(false);
       onClose();
     }
-  }, isOpen);
+  };
+
+  // Enable escape key to close modal
+  useEscapeKey(handleClose, isOpen);
 
   const validateForm = () => {
     const newErrors = { name: '', description: '' };
@@ -239,6 +252,26 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
     });
   };
 
+  const handleDeleteProduct = async () => {
+    if (!product?.id || !swrDeleteProduct) return;
+    
+    try {
+      setIsLoading(true);
+      const { error } = await swrDeleteProduct(product.id);
+      if (error) {
+        console.error('Failed to delete product:', error);
+        return;
+      }
+      setShowDeleteConfirm(false);
+      onProductDeleted?.();
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const existingImagesWithUrls = useMemo(() => {
     return existingImages.map(img => ({
       ...img,
@@ -256,13 +289,25 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
           <h2 className="text-xl font-bold text-[var(--color-text)]">
             {isEditMode ? 'Edit Product' : 'Add New Product'}
           </h2>
-          <button
-            onClick={onClose}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
-            disabled={isLoading}
-          >
-            <CloseIcon />
-          </button>
+          <div className="flex items-center gap-2">
+            {isEditMode && product && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isLoading}
+                className="p-2 text-[var(--color-text-muted)] hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 hover:bg-opacity-10 disabled:opacity-50"
+                title="Delete product"
+              >
+                <LargeTrashIcon />
+              </button>
+            )}
+            <button
+              onClick={handleClose}
+              className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              disabled={isLoading}
+            >
+              <CloseIcon />
+            </button>
+          </div>
         </div>
 
         {/* Form */}
@@ -443,7 +488,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
           <div className="flex space-x-3 pt-6 mt-6 shrink-0">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex-1 px-4 py-2 border border-[var(--color-border)] rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
               disabled={isLoading}
             >
@@ -459,6 +504,58 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, onSuccess,
           </div>
         </form>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && product && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div 
+            className="relative bg-[var(--color-bg)] rounded-2xl border border-[var(--color-border)] p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-[var(--color-text)]">
+                Delete Product
+              </h2>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-[var(--color-text)] mb-2">
+                Are you sure you want to delete <strong>"{product.name}"</strong>?
+              </p>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                This action cannot be undone. All images associated with this product will also be deleted.
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isLoading}
+                className="px-4 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors border border-[var(--color-border)] rounded-lg hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProduct}
+                disabled={isLoading}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {isLoading ? 'Deleting...' : 'Delete Product'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

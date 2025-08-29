@@ -39,3 +39,94 @@ export const TEXT_STYLING = {
   fill: '#ffffff',
   textAlign: 'center' as const,
 } as const
+
+/**
+ * Text bounds calculation utilities
+ * These help prevent text from being positioned offscreen by calculating
+ * the actual dimensions text will occupy on the canvas
+ */
+
+// Approximate character width multipliers for different font sizes
+// These are conservative estimates based on the "proxima-nova" font family
+const CHAR_WIDTH_MULTIPLIERS = [0.3, 0.35, 0.4, 0.45, 0.5, 0.52, 0.54, 0.56, 0.58] as const
+
+export const getCharWidthMultiplier = (fontSize: number): number => {
+  const index = FONT_SIZES.indexOf(fontSize as FontSize)
+  return index !== -1 ? CHAR_WIDTH_MULTIPLIERS[index] : 0.45 // Conservative default
+}
+
+/**
+ * Estimate the width of text in pixels based on font size and character count
+ * This is an approximation used for layout calculations
+ */
+export const estimateTextWidth = (text: string, fontSize: number): number => {
+  // Split by line breaks and get the longest line
+  const lines = text.split('\n')
+  const longestLine = lines.reduce((longest, line) => 
+    line.length > longest.length ? line : longest, '')
+  
+  const charWidthMultiplier = getCharWidthMultiplier(fontSize)
+  const estimatedWidth = Math.ceil(longestLine.length * fontSize * charWidthMultiplier)
+  
+  // Safety constraint: never estimate width larger than reasonable canvas usage (80%)
+  const maxReasonableWidth = 240 // 80% of 300px canvas width
+  return Math.min(estimatedWidth, maxReasonableWidth)
+}
+
+/**
+ * Estimate the height of text in pixels based on font size and line count
+ */
+export const estimateTextHeight = (text: string, fontSize: number): number => {
+  const lineCount = text.split('\n').length
+  const lineHeight = fontSize * 1.0 // Based on lineHeight in getTextStyling
+  return Math.ceil(lineCount * lineHeight)
+}
+
+/**
+ * Calculate safe positioning bounds for text to prevent offscreen placement
+ * Returns the valid coordinate ranges for position_x and position_y
+ */
+export const getSafeTextBounds = (
+  text: string, 
+  fontSize: number, 
+  canvasWidth: number, 
+  canvasHeight: number
+): { minX: number; maxX: number; minY: number; maxY: number } => {
+  const textWidth = estimateTextWidth(text, fontSize)
+  const textHeight = estimateTextHeight(text, fontSize)
+  
+  // Since text uses center origin, we need to account for half the dimensions
+  const halfWidth = textWidth / 2
+  const halfHeight = textHeight / 2
+  
+  // Add some padding to ensure text doesn't touch canvas edges
+  const padding = Math.max(fontSize * 0.25, 10)
+  
+  return {
+    minX: halfWidth + padding,
+    maxX: canvasWidth - halfWidth - padding,
+    minY: halfHeight + padding, 
+    maxY: canvasHeight - halfHeight - padding
+  }
+}
+
+/**
+ * Validate and adjust text position to keep it within safe bounds
+ */
+export const validateTextPosition = (
+  text: string,
+  fontSize: number,
+  positionX: number,
+  positionY: number,
+  canvasWidth: number,
+  canvasHeight: number
+): { x: number; y: number; adjusted: boolean } => {
+  const bounds = getSafeTextBounds(text, fontSize, canvasWidth, canvasHeight)
+  
+  const adjustedX = Math.max(bounds.minX, Math.min(bounds.maxX, positionX))
+  const adjustedY = Math.max(bounds.minY, Math.min(bounds.maxY, positionY))
+  
+  const adjusted = adjustedX !== positionX || adjustedY !== positionY
+  
+  return { x: adjustedX, y: adjustedY, adjusted }
+}

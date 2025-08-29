@@ -4,7 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { google } from "@ai-sdk/google"
 import { generateObject, streamText, NoObjectGeneratedError, streamObject, tool, stepCountIs } from 'ai'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { FONT_SIZES, getMaxCharsForFontSize } from '@/lib/text-config'
+import { FONT_SIZES, getMaxCharsForFontSize, getSafeTextBounds, validateTextPosition } from '@/lib/text-config'
 
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
@@ -28,8 +28,8 @@ const createSlideshowSchema = (collectionRefs: string[], productRefs: string[], 
       background_image_ref: z.enum(collectionRefs as [string, ...string[]]).describe("Collection image ref for background (REQUIRED)"),
       texts: z.array(z.object({
         text: z.string().describe("Text content for the slide - use \\n for line breaks within the same paragraph, don't split paragraphs into multiple text objects"),
-        position_x: z.number().min(0).max(canvasWidth).describe(`0-${canvasWidth} pixels right`),
-        position_y: z.number().min(0).max(canvasMaxHeight).describe(`0-${canvasMaxHeight} pixels down`),
+        position_x: z.number().min(40).max(canvasWidth - 40).describe(`Safe positioning X: ${40}-${canvasWidth - 40} pixels (text centers around this point, so avoid edges)`),
+        position_y: z.number().min(40).max(canvasMaxHeight - 40).describe(`Safe positioning Y: ${40}-${canvasMaxHeight - 40} pixels (text centers around this point, so avoid edges)`),
         size: z.number().refine((val) => FONT_SIZES.includes(val as any), {
           message: `Font size must be one of: ${FONT_SIZES.join(', ')}`
         }).describe(`Font size - must be one of: ${FONT_SIZES.join(', ')}`),
@@ -53,7 +53,10 @@ export async function POST(req: NextRequest) {
     const { productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio } = await req.json()
     if (!productId || typeof productId !== 'string') {
       console.log('[slideshow-generate] Missing productId')
-      return new Response('Missing productId', { status: 400 })
+      return new Response(JSON.stringify({ error: 'Missing productId' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
     
     // Validate that at least one collection is selected
@@ -69,7 +72,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return new Response('Unauthorized', { status: 401 })
+    if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    })
     console.log('[slideshow-generate] User authenticated:', user.id)
 
     // Fetch product and classification fields
@@ -81,7 +87,10 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
-    if (!product) return new Response('Product not found', { status: 404 })
+    if (!product) return new Response(JSON.stringify({ error: 'Product not found' }), { 
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    })
     console.log('[slideshow-generate] Product found:', product.name)
 
     // Fetch product images context (ai_description + user_description)
@@ -204,6 +213,8 @@ export async function POST(req: NextRequest) {
           limit: z.number().int().min(1).max(12).default(8),
         }),
         execute: async ({ industry, product_type, format, limit }) => {
+          console.log('\n=== TOOL: getExampleSummaries ===')
+          console.log('Parameters:', { industry, product_type, format, limit })
           let query = supabase
             .from('slide_examples')
             .select('id, industry, product_type, format, call_to_action, summary')
@@ -213,6 +224,9 @@ export async function POST(req: NextRequest) {
           if (product_type) query = query.eq('product_type', product_type)
           if (format) query = query.eq('format', format)
           const { data } = await query
+          console.log('Results:', data?.length || 0, 'examples')
+          console.log('Example data:', JSON.stringify(data, null, 2))
+          console.log('=== END TOOL ===\n')
           return data || []
         },
       }),
@@ -221,6 +235,8 @@ export async function POST(req: NextRequest) {
         description: 'Full slideshow examples by id (reconstructed from frames)',
         inputSchema: z.object({ ids: z.array(z.string()).min(1).max(6) }),
         execute: async ({ ids }) => {
+          console.log('\n=== TOOL: getExampleSchemas ===')
+          console.log('Parameters:', { ids })
           const { data } = await supabase
             .from('slide_example_frames')
             .select('example_id, frame_index, image_url, description, text_on_slide')
@@ -239,6 +255,9 @@ export async function POST(req: NextRequest) {
             id: example_id,
             frames: (frames as any[]).sort((a, b) => a.frame_index - b.frame_index),
           }))
+          console.log('Results:', result.length, 'example schemas')
+          console.log('Schema data:', JSON.stringify(result, null, 2))
+          console.log('=== END TOOL ===\n')
           return result
         },
       }),
@@ -254,6 +273,8 @@ export async function POST(req: NextRequest) {
           limit: z.number().int().min(1).max(500).default(200),
         }),
         execute: async ({ collection_ids, filters, limit }) => {
+          console.log('\n=== TOOL: listImagesBrief ===')
+          console.log('Parameters:', { collection_ids, filters, limit })
           const { data } = await supabase
             .from('images')
             .select('id, metadata, categories, objects, collection_id')
@@ -278,6 +299,9 @@ export async function POST(req: NextRequest) {
             const set = new Set(filters.objects)
             items = items.filter(i => i.objects?.some((o: string) => set.has(o)))
           }
+          console.log('Results:', items.length, 'images')
+          console.log('Sample results:', JSON.stringify(items.slice(0, 5), null, 2))
+          console.log('=== END TOOL ===\n')
           return items
         },
       }),
@@ -286,15 +310,21 @@ export async function POST(req: NextRequest) {
         description: 'Fetch long descriptions for images by id',
         inputSchema: z.object({ ids: z.array(z.string()).min(1).max(50) }),
         execute: async ({ ids }) => {
+          console.log('\n=== TOOL: getImagesLong ===')
+          console.log('Parameters:', { ids })
           const { data } = await supabase
             .from('images')
             .select('id, metadata')
             .in('id', ids)
-          return (data || []).map((img: any) => {
+          const result = (data || []).map((img: any) => {
             const meta = (img.metadata as any) || {}
             const long_description = typeof meta.long_description === 'string' ? meta.long_description : (typeof meta.short_description === 'string' ? meta.short_description : '')
             return { id: img.id as string, long: long_description }
           })
+          console.log('Results:', result.length, 'long descriptions')
+          console.log('Long descriptions:', JSON.stringify(result, null, 2))
+          console.log('=== END TOOL ===\n')
+          return result
         },
       }),
     }
@@ -349,6 +379,7 @@ export async function POST(req: NextRequest) {
 
     // Prepare messages
     console.log('[slideshow-generate] Preparing AI messages')
+    console.log('\n=== SYSTEM PROMPT FOR PLANNING PHASE ===')
     const system = [
       'You are a TikTok/Instagram slideshow generator that creates engaging multi-slide content.',
       'CRITICAL: You must create MULTIPLE slides as requested by the user. The schema requires an array of slides.',
@@ -383,12 +414,27 @@ export async function POST(req: NextRequest) {
       '- Multiple text objects should only be used for distinctly different text elements (e.g., title + body)',
       '- Each line after \\n must also respect the character limit for that font size',
       '',
+      'Text Positioning Rules:',
+      `- Canvas size: ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT} pixels`,
+      '- CRITICAL: Text positions are CENTER-ANCHORED - the coordinates specify where the text CENTER will be',
+      '- Larger text and longer text takes more space, so avoid positioning large/long text near edges',
+      '- Safe positioning zones:',
+      `  • For small text (12-24px): Use positions ${40}-${CANVAS_WIDTH - 40} (X) and ${40}-${CANVAS_MAX_HEIGHT - 40} (Y)`,
+      `  • For medium text (32-48px): Use positions ${60}-${CANVAS_WIDTH - 60} (X) and ${60}-${CANVAS_MAX_HEIGHT - 60} (Y)`,
+      `  • For large text (56-64px): Use positions ${80}-${CANVAS_WIDTH - 80} (X) and ${80}-${CANVAS_MAX_HEIGHT - 80} (Y)`,
+      '- Prefer center and upper-center positions for maximum readability',
+      '- Consider text length: longer text needs more horizontal spacing from edges',
+      '',
       'JSON Requirements:',
       '- slides MUST be an array, even for single slides',
       '- texts and overlays MUST be arrays within each slide',
       '- Use short refs (c01, p01) from the provided image lists for background_image_ref and image_ref',
       '- Create the exact number of slides requested by the user',
     ].join('\n')
+    console.log(system)
+    console.log('=== END SYSTEM PROMPT ===\n')
+    
+    console.log('\n=== USER CONTEXT FOR PLANNING PHASE ===')
     const userPlan = [
       `Product: ${product.name || ''}`,
       `Description: ${product.description || ''}`,
@@ -409,6 +455,9 @@ export async function POST(req: NextRequest) {
       '',
       'Plan out loud how you will: choose a format, pick images by ref, write slide texts, and timing. Do not output JSON yet.'
     ].join('\n')
+    console.log(userPlan)
+    console.log('=== END USER CONTEXT ===\n')
+    
     console.log('[slideshow-generate] Starting streaming response')
 
     const encoder = new TextEncoder()
@@ -433,7 +482,6 @@ export async function POST(req: NextRequest) {
               const { value, done } = await reader.read()
               if (done) break
               const chunk = typeof value === 'string' ? value : String(value)
-              console.log('[slideshow-generate] Planning chunk:', chunk.length, 'chars')
               controller.enqueue(encoder.encode(`event: thought\n`))
               controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
             }
@@ -442,6 +490,8 @@ export async function POST(req: NextRequest) {
 
           // 2) Generate final JSON strictly
           const slideCount = typeof prompt === 'string' && prompt.match(/(\d+)\s*slide/i) ? parseInt(prompt.match(/(\d+)\s*slide/i)![1], 10) : 3
+          
+          console.log('\n=== SYSTEM PROMPT FOR JSON GENERATION ===')
           const systemJson = `You are a TikTok/Instagram slideshow generator. Reply ONLY with valid JSON matching the exact schema.
 
 CRITICAL: You MUST generate exactly ${slideCount} slides in an array format.
@@ -491,7 +541,21 @@ CONSTRAINTS:
 - DO NOT split paragraphs/sentences into multiple text objects - use \\n instead
 - Multiple text objects only for different elements (e.g., separate title and body text)
 
+TEXT POSITIONING (CENTER-ANCHORED):
+- Text coordinates specify the CENTER point of the text, not top-left corner
+- Account for text size when positioning near edges - larger text needs more space
+- Safe positioning zones to prevent offscreen text:
+  • Small text (12-24px): X=${40}-${CANVAS_WIDTH - 40}, Y=${40}-${CANVAS_MAX_HEIGHT - 40}
+  • Medium text (32-48px): X=${60}-${CANVAS_WIDTH - 60}, Y=${60}-${CANVAS_MAX_HEIGHT - 60}  
+  • Large text (56-64px): X=${80}-${CANVAS_WIDTH - 80}, Y=${80}-${CANVAS_MAX_HEIGHT - 80}
+- Longer text needs more horizontal clearance from edges
+- Prefer center positions (X=${CANVAS_WIDTH / 2}) for better visual balance
+
 Return ONLY the JSON object. No explanations, no markdown.`
+          console.log(systemJson)
+          console.log('=== END SYSTEM PROMPT ===\n')
+          
+          console.log('\n=== USER CONTEXT FOR JSON GENERATION ===')
           const userJson = [
             `Product: ${product.name || ''}`,
             `Description: ${product.description || ''}`,
@@ -510,6 +574,8 @@ Return ONLY the JSON object. No explanations, no markdown.`
             'Relevant Example Slideshows (summaries):',
             JSON.stringify(exampleRows, null, 2),
           ].join('\n')
+          console.log(userJson)
+          console.log('=== END USER CONTEXT ===\n')
 
           // Create dynamic schema with available refs
           const collectionRefs = collectionImageItems.map(item => item.ref)
@@ -526,6 +592,26 @@ Return ONLY the JSON object. No explanations, no markdown.`
           console.log('[slideshow-generate] Schema created for', slideCount, 'slides')
           console.log('[slideshow-generate] Collection refs available:', collectionRefs.length)
           console.log('[slideshow-generate] Product refs available:', productRefs.length)
+          console.log('\n=== COLLECTION IMAGE REFS AND DESCRIPTIONS ===')
+          collectionImageItems.forEach(item => {
+            console.log(`${item.ref}: ${item.short_description}`)
+            if (item.long_description !== item.short_description) {
+              console.log(`  Long: ${item.long_description}`)
+            }
+            if (item.categories.length > 0) console.log(`  Categories: ${item.categories.join(', ')}`)
+            if (item.objects.length > 0) console.log(`  Objects: ${item.objects.join(', ')}`)
+          })
+          console.log('=== END COLLECTION REFS ===\n')
+          
+          console.log('\n=== PRODUCT IMAGE REFS AND DESCRIPTIONS ===')
+          productImageItems.forEach(item => {
+            console.log(`${item.ref}: ${item.short_description}`)
+            if (item.long_description !== item.short_description) {
+              console.log(`  Long: ${item.long_description}`)
+            }
+          })
+          console.log('=== END PRODUCT REFS ===\n')
+          
           console.log('[slideshow-generate] Calling generateObject for structured JSON')
 
           try {
@@ -543,6 +629,10 @@ Return ONLY the JSON object. No explanations, no markdown.`
             })
             console.log('[slideshow-generate] JSON generation successful, object keys:', Object.keys(finalObj || {}))
             console.log('[slideshow-generate] Slides structure:', typeof (finalObj as any)?.slides, Array.isArray((finalObj as any)?.slides))
+            
+            console.log('\n=== AI GENERATED JSON RESPONSE ===')
+            console.log(JSON.stringify(finalObj, null, 2))
+            console.log('=== END AI RESPONSE ===\n')
             
             // Extensive validation and repair
             if (!finalObj || typeof finalObj !== 'object') {
@@ -588,6 +678,49 @@ Return ONLY the JSON object. No explanations, no markdown.`
               texts: Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [{ text: `Slide ${index + 1}`, position_x: 50, position_y: 100, size: 40 }]),
               overlays: Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])
             }))
+
+            // Validate and adjust text positions to prevent offscreen text
+            console.log('[slideshow-generate] Validating text positions to prevent offscreen placement')
+            let adjustmentCount = 0
+            ;(finalObj as any).slides = (finalObj as any).slides.map((slide: any, slideIndex: number) => {
+              if (!Array.isArray(slide.texts)) return slide
+              
+              const adjustedTexts = slide.texts.map((textObj: any, textIndex: number) => {
+                const { text, position_x, position_y, size } = textObj
+                
+                if (typeof text !== 'string' || typeof position_x !== 'number' || 
+                    typeof position_y !== 'number' || typeof size !== 'number') {
+                  return textObj // Skip validation for invalid text objects
+                }
+                
+                const validation = validateTextPosition(
+                  text, size, position_x, position_y, CANVAS_WIDTH, CANVAS_MAX_HEIGHT
+                )
+                
+                if (validation.adjusted) {
+                  adjustmentCount++
+                  console.log(`[slideshow-generate] Adjusted text position on slide ${slideIndex + 1}, text ${textIndex + 1}:`)
+                  console.log(`  Original: (${position_x}, ${position_y}) -> Adjusted: (${validation.x}, ${validation.y})`)
+                  console.log(`  Text: "${text.length > 50 ? text.substring(0, 50) + '...' : text}"`)
+                  
+                  return {
+                    ...textObj,
+                    position_x: validation.x,
+                    position_y: validation.y
+                  }
+                }
+                
+                return textObj
+              })
+              
+              return { ...slide, texts: adjustedTexts }
+            })
+            
+            if (adjustmentCount > 0) {
+              console.log(`[slideshow-generate] Made ${adjustmentCount} text position adjustments to prevent offscreen text`)
+            } else {
+              console.log('[slideshow-generate] All text positions are within safe bounds')
+            }
             
             console.log('[slideshow-generate] Final validation complete, slide count:', (finalObj as any).slides.length)
             
@@ -699,6 +832,11 @@ Return ONLY the JSON object. No explanations, no markdown.`
             controller.enqueue(encoder.encode(`data: --- JSON READY ---\n\n`))
             controller.enqueue(encoder.encode(`event: json\n`))
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(mappedObj)}\n\n`))
+            
+            console.log('\n=== FINAL MAPPED SLIDESHOW OUTPUT ===')
+            console.log(JSON.stringify(mappedObj, null, 2))
+            console.log('=== END FINAL OUTPUT ===\n')
+            
             console.log('[slideshow-generate] Stream complete')
           } catch (err) {
             if ((NoObjectGeneratedError as any).isInstance?.(err)) {
@@ -730,7 +868,10 @@ Return ONLY the JSON object. No explanations, no markdown.`
     })
   } catch (error) {
     console.error('[slideshow-generate] Top-level error:', error)
-    return new Response('Server error', { status: 500 })
+    return new Response(JSON.stringify({ error: 'Server error' }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 }
 
