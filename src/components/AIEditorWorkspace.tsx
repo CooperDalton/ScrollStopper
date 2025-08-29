@@ -156,6 +156,19 @@ export default function AIEditorWorkspace() {
   const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]);
   const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
 
+  // Load saved collection IDs from localStorage on mount (same pattern as AISidebar)
+  React.useEffect(() => {
+    try {
+      const savedCollectionIds = localStorage.getItem('aiEditorSelectedCollectionIds');
+      if (savedCollectionIds) {
+        const ids = JSON.parse(savedCollectionIds) as string[];
+        setSelectedCollectionIds(ids);
+      }
+    } catch (_) {
+      // Ignore localStorage errors
+    }
+  }, []);
+
   const createPlaceholderThumbnail = React.useCallback((slideId: string) => {
     try {
       const canvas = document.createElement('canvas');
@@ -1249,11 +1262,6 @@ export default function AIEditorWorkspace() {
                 >
                   {`${currentSlide?.duration_seconds || 3}s`}
                 </button>
-                {hasUnsavedChanges && (
-                  <div className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-sm">
-                    Unsaved Changes
-                  </div>
-                )}
               </div>
             </div>
           </div>
