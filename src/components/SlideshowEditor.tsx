@@ -13,7 +13,7 @@ import TextResizeOverlay from '@/components/editor/TextResizeOverlay';
 import SlidesRow, { SlidesLeftSpacer, SlidesRightSpacer } from '@/components/editor/SlidesRow';
 import SlidesList from '@/components/editor/SlidesList';
 import { scaleImageToFillCanvas, loadFabricImage } from '@/components/editor/fabricUtils';
-import { FONT_SIZES, STROKE_WIDTHS, MAX_CHARS_PER_LINE, getStrokeWidthForFontSize, TEXT_STYLING } from '@/lib/text-config';
+import { FONT_SIZES, STROKE_WIDTHS, MAX_CHARS_PER_LINE, getStrokeWidthForFontSize, TEXT_STYLING, getTextStyling } from '@/lib/text-config';
 import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
@@ -176,16 +176,7 @@ export default function SlideshowEditor() {
   };
   
   // Reusable function to get text styling properties
-  const getTextStyling = (fontSize: number = 24) => ({
-    ...TEXT_STYLING,
-    originX: 'center' as const,
-    originY: 'center' as const,
-    stroke: 'black',
-    strokeWidth: getStrokeWidthForFontSize(fontSize),
-    charSpacing: -40, // Decreased letter spacing
-    lineHeight: 1.0, // Reduced line spacing
-    fontSize,
-  });
+
 
   // Track selected text object for resize controls
   const [selectedTextObject, setSelectedTextObject] = useState<{

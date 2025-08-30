@@ -7,7 +7,8 @@
 export const FONT_SIZES = [12, 16, 20, 24, 32, 40, 48, 56, 64] as const
 
 // Corresponding stroke widths for each font size
-export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.75, 1, 1, 1, 1.25, 1.5] as const
+//export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.75, 1, 1, 1, 1.25, 1.5] as const
+export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.75, 0.85, 1, 1, 1.25, 1.5] as const
 
 // Maximum characters per line for each font size
 //export const MAX_CHARS_PER_LINE = [54, 40, 34, 30, 26, 22, 18, 14, 10] as const
@@ -40,6 +41,21 @@ export const TEXT_STYLING = {
   fill: '#ffffff',
   textAlign: 'center' as const,
 } as const
+
+/**
+ * Get complete text styling configuration for fabric.js text objects
+ * This function provides all styling properties needed for consistent text rendering
+ */
+export const getTextStyling = (fontSize: number = 24) => ({
+  ...TEXT_STYLING,
+  originX: 'center' as const,
+  originY: 'center' as const,
+  stroke: 'black',
+  strokeWidth: getStrokeWidthForFontSize(fontSize),
+  charSpacing: -60,
+  lineHeight: 0.8,
+  fontSize,
+})
 
 /**
  * Text bounds calculation utilities
