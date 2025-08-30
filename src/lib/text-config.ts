@@ -10,7 +10,8 @@ export const FONT_SIZES = [12, 16, 20, 24, 32, 40, 48, 56, 64] as const
 export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.75, 1, 1, 1, 1.25, 1.5] as const
 
 // Maximum characters per line for each font size
-export const MAX_CHARS_PER_LINE = [54, 40, 34, 30, 26, 22, 18, 14, 10] as const
+//export const MAX_CHARS_PER_LINE = [54, 40, 34, 30, 26, 22, 18, 14, 10] as const
+export const MAX_CHARS_PER_LINE = [40, 32, 26, 20, 18, 16, 14, 10, 6] as const
 
 // Type definitions for type safety
 export type FontSize = typeof FONT_SIZES[number]

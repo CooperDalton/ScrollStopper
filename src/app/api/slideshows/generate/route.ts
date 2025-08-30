@@ -401,6 +401,7 @@ export async function POST(req: NextRequest) {
       '- Background images: Use collection image refs (c01, c02, etc.) - EVERY slide MUST have a background',
       '- Overlay images: ONLY use product image refs (p01, p02, etc.), NEVER collection refs',
       '- If NO product images are available, do NOT add any overlays (leave overlays array empty)',
+      '- Make sure all the background images have a similar style',
       '- Even with product images available, use overlays SPARINGLY - most slides should have empty overlays',
       '- Only add overlays when they would significantly enhance the message or visual appeal',
       '- Use short refs like c01, p01 instead of full UUIDs - the system will map them automatically',
@@ -409,6 +410,8 @@ export async function POST(req: NextRequest) {
       `- Font sizes: Only use these exact values: ${FONT_SIZES.join(', ')}`,
       '- CRITICAL: Character limits per line by font size (MUST follow exactly):',
       ...FONT_SIZES.map(size => `  • ${size}px: MAX ${getMaxCharsForFontSize(size)} characters per line`),
+      '- Almost always use less text than the character limit, it looks weird when the text spans the entire canvas',
+      '- Use a smaller font size than you would normally use, it looks better when the text is smaller',
       '- When text exceeds character limits, use \\n within the SAME text object for line breaks',
       '- DO NOT split a single paragraph/sentence into multiple text objects',
       '- Multiple text objects should only be used for distinctly different text elements (e.g., title + body)',
@@ -802,12 +805,22 @@ Return ONLY the JSON object. No explanations, no markdown.`
                     return {
                       ...s,
                       background_image_ref: mappedBg,
+                      background_image_url: mappedBg, // For display
+                      background_image_id: typeof bgRef === 'string' && collectionRefMap.has(bgRef)
+                        ? collectionRefMap.get(bgRef)!
+                        : null, // Store the UUID for database
                       overlays: Array.isArray(s.overlays)
                         ? s.overlays.map((o: any) => ({
                             ...o,
                             image_ref: typeof o.image_ref === 'string' && productRefMap.has(o.image_ref)
                               ? uuidToUrl.get(productRefMap.get(o.image_ref)!) || o.image_ref
                               : o.image_ref,
+                            image_url: typeof o.image_ref === 'string' && productRefMap.has(o.image_ref)
+                              ? uuidToUrl.get(productRefMap.get(o.image_ref)!) || o.image_ref
+                              : o.image_ref, // For display
+                            image_id: typeof o.image_ref === 'string' && productRefMap.has(o.image_ref)
+                              ? productRefMap.get(o.image_ref)!
+                              : '', // Store the UUID for database
                           }))
                         : s.overlays,
                     }

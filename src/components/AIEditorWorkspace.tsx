@@ -16,6 +16,9 @@ import { animateScrollX, animateScrollY, FAST_SCROLL_DURATION_X_MS, FAST_SCROLL_
 import { scaleImageToFillCanvas, loadFabricImage } from '@/components/editor/fabricUtils';
 import { FONT_SIZES, STROKE_WIDTHS, getStrokeWidthForFontSize, TEXT_STYLING } from '@/lib/text-config';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
+import { useSlideshows } from '@/hooks/useSlideshows';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 // Icon components for the control panel
 const BackgroundIcon = () => (
@@ -41,6 +44,14 @@ const ImageIcon = () => (
     <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/>
     <circle cx="12" cy="8" r="2"/>
     <rect width="16" height="16" x="6" y="2" rx="2"/>
+  </svg>
+);
+
+const SaveIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+    <polyline points="17,21 17,13 7,13 7,21"/>
+    <polyline points="7,3 7,8 15,8"/>
   </svg>
 );
 
@@ -71,12 +82,23 @@ interface JSONSlideshow {
 }
 
 export default function AIEditorWorkspace() {
+  // Hooks for saving to database
+  const { 
+    createSlideshow, 
+    saveSlideTexts, 
+    saveSlideOverlays, 
+    updateSlideBackground,
+    updateSlideDuration
+  } = useSlideshows();
+  const router = useRouter();
+  
   // Follow the same pattern as SlideshowEditor: use localSlideshows state
   const [localSlideshows, setLocalSlideshows] = React.useState<any[]>([]);
   const [selectedSlideshowId, setSelectedSlideshowId] = React.useState<string>('');
   const [selectedSlideId, setSelectedSlideId] = React.useState<string>('');
   const [slideRenderKey, setSlideRenderKey] = React.useState<number>(0);
   const [isEditorCleared, setIsEditorCleared] = React.useState<boolean>(true);
+  const [isSaving, setIsSaving] = React.useState<boolean>(false);
 
   // Computed value: use local slideshows (similar to main editor)  
   const displaySlideshows = localSlideshows;
@@ -145,6 +167,7 @@ export default function AIEditorWorkspace() {
   const initializingMiniCanvasesRef = React.useRef<Set<string>>(new Set());
   const scrollContainerRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const verticalScrollRef = React.useRef<HTMLDivElement>(null);
+  const aiThoughtsRef = React.useRef<HTMLDivElement>(null);
   // Thumbnail store for unselected slides
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
   const [verticalPad, setVerticalPad] = React.useState<number>(0);
@@ -155,6 +178,8 @@ export default function AIEditorWorkspace() {
   const [isSelectCollectionsOpen, setIsSelectCollectionsOpen] = React.useState<boolean>(false);
   const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]);
   const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
+  const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
+  const [generationCompleted, setGenerationCompleted] = React.useState<boolean>(false);
 
   // Load saved collection IDs from localStorage on mount (same pattern as AISidebar)
   React.useEffect(() => {
@@ -204,6 +229,17 @@ export default function AIEditorWorkspace() {
       });
     }, 0);
   }, [CANVAS_WIDTH, CANVAS_HEIGHT]);
+
+  // Auto-scroll AI thoughts to bottom when new content is added
+  React.useEffect(() => {
+    const aiThoughtsDiv = aiThoughtsRef.current;
+    if (aiThoughtsDiv && aiThoughts) {
+      // Use requestAnimationFrame to ensure DOM has updated before scrolling
+      requestAnimationFrame(() => {
+        aiThoughtsDiv.scrollTop = aiThoughtsDiv.scrollHeight;
+      });
+    }
+  }, [aiThoughts]);
 
   // Observe vertical container size to compute top/bottom padding that enables perfect centering
   React.useEffect(() => {
@@ -328,6 +364,68 @@ export default function AIEditorWorkspace() {
     }
   }, [forceCanvasRefresh, selectedSlideId, currentSlide]);
 
+  // Keyboard event listener for delete functionality (same pattern as main editor)
+  React.useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const canvas = canvasRefs.current[selectedSlideId];
+        if (canvas) {
+          const activeObject = canvas.getActiveObject();
+          if (activeObject && !activeObject.get('isBackground')) {
+            // Check if it's a text object in editing mode
+            if (activeObject.get('textId')) {
+              // For text objects, only delete if not in editing mode
+              const textObject = activeObject as fabric.IText;
+              if (textObject.isEditing) {
+                // User is editing text content, don't delete the text object
+                return;
+              }
+            }
+
+            // Prevent default behavior (like navigating back in browser for Backspace)
+            e.preventDefault();
+
+            // Remove from canvas
+            canvas.remove(activeObject);
+            canvas.renderAll();
+
+            // Remove from slide data
+            if (activeObject.get('textId')) {
+              // It's a text object
+              const textId = activeObject.get('textId');
+              if (currentSlide?.texts) {
+                currentSlide.texts = currentSlide.texts.filter((t: any) => t.id !== textId);
+                // Update local state to persist deletion when switching slides
+                updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+                  texts: currentSlide.texts
+                });
+                // Mark as having unsaved changes
+                setHasUnsavedChanges(true);
+                // Clear text selection
+                updateSelectedTextObject(null);
+              }
+            } else if (activeObject.get('overlayId')) {
+              // It's an image overlay
+              const overlayId = activeObject.get('overlayId');
+              if (currentSlide?.overlays) {
+                currentSlide.overlays = currentSlide.overlays.filter((o: any) => o.id !== overlayId);
+                // Update local state to persist deletion when switching slides
+                updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+                  overlays: currentSlide.overlays
+                });
+                // Mark as having unsaved changes
+                setHasUnsavedChanges(true);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [selectedSlideId, currentSlide, currentSlideshow]);
+
   // Text selection helpers (same as main editor)
   const getButtonPosition = (textObj: fabric.IText) => {
     textObj.setCoords();
@@ -389,6 +487,8 @@ export default function AIEditorWorkspace() {
     // Update button position based on new size
     updateSelectedTextObject({ fabricObject: obj, textId: current.textId });
   };
+
+
 
   // Helper function to update local slideshow state (same pattern as main editor)
   const updateLocalSlideshow = (slideshowId: string, slideId: string, updates: Partial<Slide>) => {
@@ -768,7 +868,11 @@ export default function AIEditorWorkspace() {
         fabric.Image.fromURL(
           slide.backgroundImage,
           (img: fabric.Image) => {
-            img.set({ selectable: false, evented: false });
+            img.set({ 
+              selectable: false, 
+              evented: false,
+              isBackground: true
+            });
             scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT);
             canvas.add(img);
             canvas.sendToBack(img);
@@ -919,6 +1023,8 @@ export default function AIEditorWorkspace() {
           }
         }, 25);
       });
+
+
       
       canvas.renderAll();
       // After first render, capture a thumbnail for when this slide becomes mini
@@ -963,11 +1069,102 @@ export default function AIEditorWorkspace() {
     }
   };
 
+  // Save function to persist slideshow to database
+  const handleSave = async () => {
+    if (!currentSlideshow || !currentSlideshow.slides || currentSlideshow.slides.length === 0) {
+      alert('No slideshow to save');
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      console.log('[AIEditor] Starting save process for slideshow:', currentSlideshow.name);
+      
+      // Create the slideshow in the database
+      const savedSlideshow = await createSlideshow(
+        currentSlideshow.name || 'AI Generated Slideshow',
+        undefined, // productId - can be added later if needed
+        currentSlideshow.aspect_ratio || '9:16'
+      );
+      
+      console.log('[AIEditor] Created slideshow in database:', savedSlideshow.id);
+      
+      // Delete the initial blank slide that createSlideshow creates
+      if (savedSlideshow.slides.length > 0) {
+        const { error } = await supabase
+          .from('slides')
+          .delete()
+          .eq('id', savedSlideshow.slides[0].id);
+        if (error) throw error;
+      }
+      
+      // Create all slides in the database
+      const slideInserts = currentSlideshow.slides.map((slide: any, index: number) => ({
+        slideshow_id: savedSlideshow.id,
+        background_image_id: slide.background_image_id || null,
+        duration_seconds: slide.duration_seconds || 3,
+        index: index
+      }));
+      
+      const { data: createdSlides, error: slideError } = await supabase
+        .from('slides')
+        .insert(slideInserts)
+        .select();
+        
+      if (slideError) throw slideError;
+      
+      console.log('[AIEditor] Created slides in database:', createdSlides?.length);
+      
+      // Save texts and overlays for each slide
+      for (let i = 0; i < currentSlideshow.slides.length; i++) {
+        const localSlide = currentSlideshow.slides[i];
+        const dbSlide = createdSlides?.[i];
+        
+        if (!dbSlide) continue;
+        
+        console.log(`[AIEditor] Saving slide ${i + 1}/${currentSlideshow.slides.length} - texts: ${localSlide.texts?.length || 0}, overlays: ${localSlide.overlays?.length || 0}`);
+        
+        // Save texts
+        if (localSlide.texts && localSlide.texts.length > 0) {
+          const textsToSave = localSlide.texts.map((text: any) => ({
+            ...text,
+            slide_id: dbSlide.id
+          }));
+          await saveSlideTexts(dbSlide.id, textsToSave);
+        }
+        
+        // Save overlays 
+        if (localSlide.overlays && localSlide.overlays.length > 0) {
+          const overlaysToSave = localSlide.overlays.map((overlay: any) => ({
+            ...overlay,
+            slide_id: dbSlide.id
+          }));
+          await saveSlideOverlays(dbSlide.id, overlaysToSave);
+        }
+      }
+      
+      console.log('[AIEditor] Slideshow saved successfully, navigating to editor');
+      
+      // Navigate to the main slideshow editor in drafts mode
+      router.push('/editor?mode=drafts');
+      
+    } catch (error) {
+      console.error('[AIEditor] Error saving slideshow:', error);
+      alert('Failed to save slideshow. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Actions
   const handleGenerate = () => {
     // Dispose existing canvases to avoid stale refs
     Object.keys(canvasRefs.current).forEach(disposeCanvas);
     Object.keys(miniCanvasRefs.current).forEach(disposeMiniCanvas);
+    
+    // Reset generation state when creating new slideshow
+    setGenerationCompleted(false);
 
     const createdAt = new Date().toISOString();
     const slideshowId = `ai-generated-${Date.now()}`;
@@ -1029,6 +1226,7 @@ export default function AIEditorWorkspace() {
         duration_seconds: 3,
         index: idx,
         created_at: createdAt,
+        background_image_id: slide.background_image_id || undefined,
         backgroundImage: slide.background_image_url || slide.background_image_ref || undefined,
         texts: (Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [])).map((t: any, tIdx: number) => ({
           id: `${slideId}-text-${tIdx}`,
@@ -1044,7 +1242,7 @@ export default function AIEditorWorkspace() {
         overlays: (Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])).map((o: any, oIdx: number) => ({
           id: `${slideId}-overlay-${oIdx}`,
           slide_id: slideId,
-          image_id: '',
+          image_id: o.image_id || '',
           position_x: o.position_x,
           position_y: o.position_y,
           rotation: o.rotation,
@@ -1114,6 +1312,9 @@ export default function AIEditorWorkspace() {
 
   // Create a new slideshow with 5 blank slides
   const handleAddRow = () => {
+    // Reset generation state when creating new slideshow
+    setGenerationCompleted(false);
+    
     const createdAt = new Date().toISOString();
     const slideshowId = `blank-slideshow-${Date.now()}`;
     const newSlides: Slide[] = Array.from({ length: 5 }).map((_, idx) => ({
@@ -1152,10 +1353,13 @@ export default function AIEditorWorkspace() {
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden flex-1">
       <AISidebar
         onAddRow={handleAddRow}
-        onGenerateFromJson={handleGenerateFromJson}
         onRunGenerate={({ productId, prompt }) => {
           try {
             setAiThoughts('');
+            setIsGenerating(true);
+            setGenerationCompleted(false); // Reset completion state when starting new generation
+            let finalJson = '';
+            
             const run = async () => {
               const res = await fetch('/api/slideshows/generate', {
                 method: 'POST',
@@ -1168,16 +1372,21 @@ export default function AIEditorWorkspace() {
                   const errorData = await res.json();
                   if (errorData.error) {
                     alert(errorData.error);
+                    setIsGenerating(false);
                     return;
                   }
                 } catch {
                   // Fall back to generic error
                 }
                 setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                setIsGenerating(false);
+                setGenerationCompleted(true); // Hide AI thoughts on error
                 return;
               }
               if (!res.body) {
                 setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
+                setIsGenerating(false);
+                setGenerationCompleted(true); // Hide AI thoughts on error
                 return;
               }
               const reader = res.body.getReader();
@@ -1185,7 +1394,15 @@ export default function AIEditorWorkspace() {
               let buffer = '';
               while (true) {
                 const { value, done } = await reader.read();
-                if (done) break;
+                if (done) {
+                  // Generation is complete - auto-create slideshow from final JSON
+                  setIsGenerating(false);
+                  setGenerationCompleted(true); // Mark generation as completed to hide AI thoughts
+                  if (finalJson) {
+                    handleGenerateFromJson(finalJson);
+                  }
+                  break;
+                }
                 const chunkText = decoder.decode(value, { stream: true });
                 buffer += chunkText;
                 const parts = buffer.split('\n\n');
@@ -1205,7 +1422,8 @@ export default function AIEditorWorkspace() {
                   } else if (eventType === 'json') {
                     try {
                       const obj = JSON.parse(data);
-                      setSlideshowJson(JSON.stringify(obj, null, 2));
+                      finalJson = JSON.stringify(obj, null, 2);
+                      setSlideshowJson(finalJson);
                     } catch {}
                   } else if (eventType === 'json.partial') {
                     try {
@@ -1216,13 +1434,17 @@ export default function AIEditorWorkspace() {
                 }
               }
             };
-            run();
+            run().catch((e) => {
+              setIsGenerating(false);
+              setGenerationCompleted(true); // Hide AI thoughts on error
+              setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
+            });
           } catch (e) {
+            setIsGenerating(false);
+            setGenerationCompleted(true); // Hide AI thoughts on error
             setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
           }
         }}
-        jsonValue={slideshowJson}
-        onJsonChange={setSlideshowJson}
         onSelectImages={() => setIsSelectCollectionsOpen(true)}
         aspectRatio={selectedAspectRatio}
         onAspectRatioChange={setSelectedAspectRatio}
@@ -1262,6 +1484,24 @@ export default function AIEditorWorkspace() {
                 >
                   {`${currentSlide?.duration_seconds || 3}s`}
                 </button>
+                <button 
+                  onClick={handleSave} 
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2" 
+                  title="Save Slideshow"
+                >
+                  {isSaving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <SaveIcon />
+                      <span>Save</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1270,13 +1510,29 @@ export default function AIEditorWorkspace() {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
             
-            {/* AI Thoughts Floating Text Box */}
-            <div className="absolute bottom-4 left-4 z-10 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
-              <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">AI Thoughts</div>
-              <div className="text-sm text-[var(--color-text)] font-mono whitespace-pre-wrap max-h-64 overflow-auto pr-1">
-                {aiThoughts || 'Ready to generate slideshows...'}
+            {/* AI Thoughts Floating Text Box - hidden when generation is completed */}
+            {!generationCompleted && (
+              <div className="absolute bottom-4 left-4 z-30 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
+                <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">AI Thoughts</div>
+                <div 
+                  ref={aiThoughtsRef}
+                  className="text-sm text-[var(--color-text)] font-mono whitespace-pre-wrap max-h-64 overflow-auto pr-1"
+                >
+                  {aiThoughts || 'Ready to generate slideshows...'}
+                </div>
               </div>
-            </div>
+            )}
+            
+            {/* Loading Overlay */}
+            {isGenerating && (
+              <div className="absolute inset-0 bg-gray-200 bg-opacity-50 flex items-center justify-center z-20">
+                <div className="flex space-x-2">
+                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce"></div>
+                </div>
+              </div>
+            )}
             
             {/* Single seamless scrollable area handling both horizontal and vertical centering */}
             <div ref={verticalScrollRef} className="absolute inset-0 overflow-auto scrollbar-hide">

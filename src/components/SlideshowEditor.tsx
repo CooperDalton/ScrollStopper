@@ -181,6 +181,7 @@ export default function SlideshowEditor() {
     originX: 'center' as const,
     originY: 'center' as const,
     stroke: 'black',
+    strokeWidth: getStrokeWidthForFontSize(fontSize),
     charSpacing: -40, // Decreased letter spacing
     lineHeight: 1.0, // Reduced line spacing
     fontSize,

@@ -2,6 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import JSZip from 'jszip';
 
 interface SlideshowPreviewModalProps {
   isOpen: boolean;
@@ -23,10 +24,17 @@ const TrashIcon = () => (
   </svg>
 );
 
+const DownloadIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
 export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, title = 'Preview', onDelete }: SlideshowPreviewModalProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [direction, setDirection] = useState<null | 'next' | 'prev'>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const animationTimeoutRef = useRef<number | null>(null);
 
   const handleClose = () => {
@@ -72,6 +80,59 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
       setIsAnimating(false);
       setDirection(null);
     }, 350);
+  };
+
+  const downloadAllImages = async () => {
+    if (isDownloading || imageUrls.length === 0) return;
+    
+    setIsDownloading(true);
+    
+    try {
+      const zip = new JSZip();
+      
+      // Fetch all images and add them to the zip
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imageUrl = imageUrls[i];
+        const response = await fetch(imageUrl);
+        
+        if (!response.ok) {
+          console.warn(`Failed to fetch image ${i + 1}: ${response.statusText}`);
+          continue;
+        }
+        
+        const blob = await response.blob();
+        const fileName = `slide-${i + 1}.${getFileExtension(imageUrl) || 'jpg'}`;
+        zip.file(fileName, blob);
+      }
+      
+      // Generate zip file and trigger download
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `slideshow-images.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading images:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const getFileExtension = (url: string) => {
+    try {
+      const pathname = new URL(url).pathname;
+      const extension = pathname.split('.').pop();
+      return extension?.toLowerCase();
+    } catch {
+      return null;
+    }
   };
 
   const slidesToRender = useMemo(() => {
@@ -149,6 +210,14 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-[var(--color-text)]">{title}</h2>
           <div className="flex items-center gap-2">
+            <button
+              onClick={downloadAllImages}
+              disabled={isDownloading || imageUrls.length === 0}
+              className="flex items-center gap-2 px-3 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:bg-[var(--color-bg-secondary)] disabled:text-[var(--color-text-muted)] text-white rounded-lg transition-colors"
+            >
+              <DownloadIcon />
+              <span>{isDownloading ? 'Downloading...' : 'Download Images'}</span>
+            </button>
             {onDelete && (
               <button
                 onClick={() => {
