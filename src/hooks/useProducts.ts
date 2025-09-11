@@ -1,6 +1,6 @@
 import useSWR, { mutate } from 'swr'
 import { useMemo } from 'react'
-import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct, deleteProduct } from '@/lib/products'
+import { Product, CreateProductData, UpdateProductData, createProduct, updateProduct, deleteProduct, getAllUserProductImages, ProductImage } from '@/lib/products'
 
 // Stable empty array to prevent unnecessary re-renders
 const EMPTY_PRODUCTS: Product[] = []
@@ -170,5 +170,42 @@ export function useProducts() {
     updateProduct: updateProductOptimistic,
     deleteProduct: deleteProductOptimistic,
     refreshProducts,
+  }
+}
+
+// Hook for fetching all product images
+export function useAllProductImages() {
+  const PRODUCT_IMAGES_KEY = 'all-product-images'
+
+  const { data, error, isLoading, mutate: revalidate } = useSWR(
+    PRODUCT_IMAGES_KEY,
+    async () => {
+      const result = await getAllUserProductImages()
+      if (result.error) throw result.error
+      return { images: result.images, error: null }
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60000,
+    }
+  )
+
+  // Stable empty array to prevent unnecessary re-renders
+  const productImages = useMemo(() => {
+    return data?.images || []
+  }, [data?.images])
+
+  const isError = !!error
+
+  // Refresh product images from server
+  const refreshProductImages = () => revalidate()
+
+  return {
+    productImages,
+    isLoading,
+    isError,
+    error,
+    refreshProductImages,
   }
 } 

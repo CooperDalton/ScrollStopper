@@ -18,6 +18,7 @@ import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
 import { supabase } from '@/lib/supabase';
+import { copyProductImageForOverlay } from '@/lib/images';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 
 // Icons
@@ -1591,11 +1592,28 @@ export default function SlideshowEditor() {
     }
   };
 
-  const handleImageOverlaySelect = (imageUrl: string, imageId: string) => {
+  const handleImageOverlaySelect = async (imageUrl: string, imageId: string, isProductImage: boolean = false) => {
     if (!currentSlide) return;
 
+    let finalImageId = imageId;
+
+    // If this is a product image, copy it to the images table first
+    if (isProductImage) {
+      console.log('[SlideshowEditor] Copying product image for overlay:', imageId);
+      const { image, error } = await copyProductImageForOverlay(imageId);
+      if (error) {
+        console.error('[SlideshowEditor] Failed to copy product image:', error);
+        alert('Failed to add product image as overlay. Please try again.');
+        return;
+      }
+      if (image) {
+        finalImageId = image.id;
+        console.log('[SlideshowEditor] Product image copied successfully, new ID:', finalImageId);
+      }
+    }
+
     const overlayId = `overlay-${Date.now()}`;
-    
+
     // Add to canvas first to get image dimensions
     const canvas = canvasRefs.current[selectedSlideId];
     if (canvas) {
@@ -1621,7 +1639,7 @@ export default function SlideshowEditor() {
         const newOverlay: SlideOverlay = {
           id: overlayId,
           slide_id: selectedSlideId,
-          image_id: imageId,
+          image_id: finalImageId, // Use the copied image ID for product images
           position_x: CANVAS_WIDTH / 2,
           position_y: CANVAS_HEIGHT / 2,
           rotation: 0,
@@ -1793,28 +1811,22 @@ export default function SlideshowEditor() {
         return undefined;
       }
 
+      // Add background image first (bottom layer)
       if (slide.backgroundImage) {
         const img = await loadFabricImage(slide.backgroundImage, {
           crossOrigin: 'anonymous'
         });
-        img.set({ selectable: false, evented: false, isBackground: true });
+        img.set({
+          selectable: false,
+          evented: false,
+          isBackground: true  // Mark as background for layering
+        });
         scaleImageToFillCanvas(img, targetWidth, targetHeight);
         canvas.add(img);
+        canvas.sendToBack(img);  // Explicitly send to back
       }
 
-      if (slide.texts && slide.texts.length > 0) {
-        for (const textData of slide.texts) {
-          const fabricText = new fabric.IText(textData.text, {
-            ...getTextStyling(textData.size * scaleFactor),
-            left: textData.position_x * scaleFactor,
-            top: textData.position_y * scaleFactor,
-            angle: textData.rotation,
-            textId: textData.id
-          });
-          canvas.add(fabricText);
-        }
-      }
-
+      // Add overlay images second (middle layer)
       if (slide.overlays && slide.overlays.length > 0) {
         for (const overlayData of slide.overlays) {
           if (overlayData.imageUrl) {
@@ -1830,12 +1842,50 @@ export default function SlideshowEditor() {
               selectable: false,
               evented: false,
               originX: 'center',
-              originY: 'center'
+              originY: 'center',
+              overlayId: overlayData.id || overlayData.image_id || 'overlay-unknown',  // Mark as overlay for layering
+              isOverlay: true  // Additional marker
             });
             canvas.add(img);
           }
         }
       }
+
+      // Add text elements last (top layer) - text should ALWAYS be in front
+      if (slide.texts && slide.texts.length > 0) {
+        for (const textData of slide.texts) {
+          const fabricText = new fabric.IText(textData.text, {
+            ...getTextStyling(textData.size * scaleFactor),
+            left: textData.position_x * scaleFactor,
+            top: textData.position_y * scaleFactor,
+            angle: textData.rotation,
+            textId: textData.id,  // Mark as text for layering
+            selectable: false,
+            evented: false
+          });
+          canvas.add(fabricText);
+          canvas.bringToFront(fabricText);  // Explicitly bring text to front
+        }
+      }
+
+      // CRITICAL: Final layering pass - ensure proper order for rendering
+      // This is the last chance to fix layering before canvas.toDataURL()
+      const objects = canvas.getObjects()
+
+      const backgroundObjects = objects.filter((obj: any) => obj.get('isBackground'))
+      const overlayObjects = objects.filter((obj: any) => obj.get('isOverlay') || obj.get('overlayId'))
+      const textObjects = objects.filter((obj: any) => obj.get('textId'))
+
+      // FORCE correct layering order by removing all and re-adding in correct sequence
+      // Store background color before clearing
+      const bgColor = canvas.backgroundColor
+      canvas.clear()
+      canvas.backgroundColor = bgColor
+
+      // Re-add in correct order: background -> overlays -> text
+      backgroundObjects.forEach((obj: any) => canvas.add(obj))
+      overlayObjects.forEach((obj: any) => canvas.add(obj))
+      textObjects.forEach((obj: any) => canvas.add(obj))
 
       canvas.renderAll();
       return canvas;

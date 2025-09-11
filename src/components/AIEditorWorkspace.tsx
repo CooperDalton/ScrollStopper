@@ -19,6 +19,7 @@ import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlide
 import { useSlideshows } from '@/hooks/useSlideshows';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { copyProductImageForOverlay } from '@/lib/images';
 
 // Icon components for the control panel
 const BackgroundIcon = () => (
@@ -721,10 +722,27 @@ export default function AIEditorWorkspace() {
     }
   };
 
-  const handleImageOverlaySelect = (imageUrl: string, imageId: string) => {
+  const handleImageOverlaySelect = async (imageUrl: string, imageId: string, isProductImage: boolean = false) => {
     if (!currentSlide) {
       console.warn('[AIEditor] No current slide found when adding overlay');
       return;
+    }
+
+    let finalImageId = imageId;
+
+    // If this is a product image, copy it to the images table first
+    if (isProductImage) {
+      console.log('[AIEditor] Copying product image for overlay:', imageId);
+      const { image, error } = await copyProductImageForOverlay(imageId);
+      if (error) {
+        console.error('[AIEditor] Failed to copy product image:', error);
+        alert('Failed to add product image as overlay. Please try again.');
+        return;
+      }
+      if (image) {
+        finalImageId = image.id;
+        console.log('[AIEditor] Product image copied successfully, new ID:', finalImageId);
+      }
     }
 
     console.log('[AIEditor] Adding image overlay to slide:', selectedSlideId);
@@ -733,7 +751,7 @@ export default function AIEditorWorkspace() {
     const newOverlay: SlideOverlay = {
       id: overlayId,
       slide_id: selectedSlideId,
-      image_id: imageId,
+      image_id: finalImageId, // Use the copied image ID for product images
       position_x: CANVAS_WIDTH / 2,
       position_y: CANVAS_HEIGHT / 2,
       rotation: 0,
@@ -1215,7 +1233,7 @@ export default function AIEditorWorkspace() {
         index: idx,
         created_at: createdAt,
         background_image_id: slide.background_image_id || undefined,
-        backgroundImage: slide.background_image_url || slide.background_image_ref || undefined,
+        backgroundImage: slide.background_image_ref || undefined,
         texts: (Array.isArray(slide.texts) ? slide.texts : (slide.texts ? [slide.texts] : [])).map((t: any, tIdx: number) => ({
           id: `${slideId}-text-${tIdx}`,
           slide_id: slideId,

@@ -363,6 +363,39 @@ export async function deleteProductImage(imageId: string) {
   }
 }
 
+// Get all product images for the current user (across all products)
+export async function getAllUserProductImages() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('User must be authenticated')
+
+    const { data, error } = await supabase
+      .from('product_images')
+      .select(`
+        *,
+        products (
+          id,
+          name
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    // Transform the data to include product info
+    const productImages = (data || []).map(img => ({
+      ...img,
+      product_name: (img as any).products?.name || 'Unknown Product'
+    }))
+
+    return { images: productImages as (ProductImage & { product_name: string })[], error: null }
+  } catch (error) {
+    console.error('Error fetching all user product images:', error)
+    return { images: [] as (ProductImage & { product_name: string })[], error: error as Error }
+  }
+}
+
 // Trigger AI description for a product image (server-side processing)
 export async function describeProductImageAI(imageId: string, imageUrl?: string) {
   try {

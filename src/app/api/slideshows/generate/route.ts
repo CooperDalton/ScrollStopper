@@ -380,7 +380,7 @@ export async function POST(req: NextRequest) {
     // Prepare messages
     console.log('[slideshow-generate] Preparing AI messages')
     console.log('\n=== SYSTEM PROMPT FOR PLANNING PHASE ===')
-    const system = [
+    const planningPrompt = [
       'You are a TikTok/Instagram slideshow generator that creates engaging multi-slide content.',
       'CRITICAL: You must create MULTIPLE slides as requested by the user. The schema requires an array of slides.',
       '',
@@ -388,6 +388,11 @@ export async function POST(req: NextRequest) {
       '1. First, use tools to explore available images and examples',
       '2. Plan your slideshow structure based on user requirements', 
       '3. Then generate structured JSON matching the exact schema',
+      '',
+      'Guidelines:',
+      'Use a soft sell method. The user should not even realize they are being sold to. Such as casually recommending the product from the perspective of the user.',
+      'The first slide is the most important and should hook the watcher in by creating a knowledge gap, curiosity, or problem.',
+      '',
       '',
       'Tool usage rules:',
       `- Max tool rounds: ${MAX_TOOL_ROUNDS}. Use at most one brief and one long fetch per round.`,
@@ -421,11 +426,6 @@ export async function POST(req: NextRequest) {
       `- Canvas size: ${CANVAS_WIDTH}x${CANVAS_MAX_HEIGHT} pixels`,
       '- CRITICAL: Text positions are CENTER-ANCHORED - the coordinates specify where the text CENTER will be',
       '- Larger text and longer text takes more space, so avoid positioning large/long text near edges',
-      '- Safe positioning zones:',
-      `  • For small text (12-24px): Use positions ${40}-${CANVAS_WIDTH - 40} (X) and ${40}-${CANVAS_MAX_HEIGHT - 40} (Y)`,
-      `  • For medium text (32-48px): Use positions ${60}-${CANVAS_WIDTH - 60} (X) and ${60}-${CANVAS_MAX_HEIGHT - 60} (Y)`,
-      `  • For large text (56-64px): Use positions ${80}-${CANVAS_WIDTH - 80} (X) and ${80}-${CANVAS_MAX_HEIGHT - 80} (Y)`,
-      '- Prefer center and upper-center positions for maximum readability',
       '- Consider text length: longer text needs more horizontal spacing from edges',
       '',
       'JSON Requirements:',
@@ -434,7 +434,7 @@ export async function POST(req: NextRequest) {
       '- Use short refs (c01, p01) from the provided image lists for background_image_ref and image_ref',
       '- Create the exact number of slides requested by the user',
     ].join('\n')
-    console.log(system)
+    console.log(planningPrompt)
     console.log('=== END SYSTEM PROMPT ===\n')
     
     console.log('\n=== USER CONTEXT FOR PLANNING PHASE ===')
@@ -473,7 +473,7 @@ export async function POST(req: NextRequest) {
             const plan = await streamText({
               model: google("models/gemini-2.5-flash"),
               messages: [
-                { role: 'system', content: system },
+                { role: 'system', content: planningPrompt },
                 { role: 'user', content: userPlan },
               ],
               tools: planningTools,
@@ -547,10 +547,11 @@ CONSTRAINTS:
 TEXT POSITIONING (CENTER-ANCHORED):
 - Text coordinates specify the CENTER point of the text, not top-left corner
 - Account for text size when positioning near edges - larger text needs more space
-- Safe positioning zones to prevent offscreen text:
-  • Small text (12-24px): X=${40}-${CANVAS_WIDTH - 40}, Y=${40}-${CANVAS_MAX_HEIGHT - 40}
-  • Medium text (32-48px): X=${60}-${CANVAS_WIDTH - 60}, Y=${60}-${CANVAS_MAX_HEIGHT - 60}  
-  • Large text (56-64px): X=${80}-${CANVAS_WIDTH - 80}, Y=${80}-${CANVAS_MAX_HEIGHT - 80}
+- CRITICAL CHARACTER LIMITS: Each line must not exceed the character limit for its font size:
+  ${FONT_SIZES.map(size => `• ${size}px: MAX ${getMaxCharsForFontSize(size)} characters per line`).join(', ')}
+- Use \\n within a single text object when text exceeds character limits
+- DO NOT split paragraphs/sentences into multiple text objects - use \\n instead
+- Multiple text objects only for different elements (e.g., separate title and body text)
 - Longer text needs more horizontal clearance from edges
 - Prefer center positions (X=${CANVAS_WIDTH / 2}) for better visual balance
 
@@ -796,15 +797,27 @@ Return ONLY the JSON object. No explanations, no markdown.`
                   ...(finalObj as any),
                   slides: slides.map((s: any, index: number) => {
                     const bgRef = s.background_image_ref
-                    const mappedBg = typeof bgRef === 'string' && collectionRefMap.has(bgRef)
-                      ? uuidToUrl.get(collectionRefMap.get(bgRef)!) || bgRef
-                      : bgRef
-                    
-                    console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> ${mappedBg === bgRef ? 'NOT MAPPED' : 'MAPPED'}`)
-                    
+                    let mappedBg = bgRef
+                    let mappedBgId = null
+
+                    if (typeof bgRef === 'string' && collectionRefMap.has(bgRef)) {
+                      const uuid = collectionRefMap.get(bgRef)!
+                      const url = uuidToUrl.get(uuid)
+                      if (url) {
+                        mappedBg = url
+                        mappedBgId = uuid
+                        console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> UUID: ${uuid} -> URL: ${url.substring(0, 50)}...`)
+                      } else {
+                        console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> UUID: ${uuid} -> NO URL FOUND, keeping ref`)
+                      }
+                    } else {
+                      console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> NO UUID MAPPING FOUND`)
+                    }
+
                     return {
                       ...s,
                       background_image_ref: mappedBg,
+                      background_image_id: mappedBgId, // Add the UUID for database storage
                       overlays: Array.isArray(s.overlays)
                         ? s.overlays.map((o: any) => ({
                             ...o,

@@ -123,28 +123,22 @@ const createGetSlideCanvas = (
     const slide = slideshow.slides.find(s => s.id === slideId)
     if (!slide) return undefined
 
+    // Add background image first (bottom layer)
     if (slide.backgroundImage) {
       const img = await fabric.Image.fromURL(slide.backgroundImage, {
         crossOrigin: 'anonymous'
       })
-      img.set({ selectable: false, evented: false, isBackground: true })
+      img.set({
+        selectable: false,
+        evented: false,
+        isBackground: true  // Mark as background for layering
+      })
       scaleImageToFillCanvas(img, CANVAS_WIDTH, CANVAS_HEIGHT)
       canvas.add(img)
+      canvas.sendToBack(img)  // Explicitly send to back
     }
 
-    if (slide.texts) {
-      for (const textData of slide.texts) {
-        const fabricText = new fabric.IText(textData.text, {
-          ...getTextStyling(textData.size * scaleFactor),
-          left: textData.position_x * scaleFactor,
-          top: textData.position_y * scaleFactor,
-          angle: textData.rotation,
-          textId: textData.id
-        })
-        canvas.add(fabricText)
-      }
-    }
-
+    // Add overlay images second (middle layer)
     if (slide.overlays) {
       for (const overlayData of slide.overlays) {
         if (overlayData.imageUrl) {
@@ -160,12 +154,50 @@ const createGetSlideCanvas = (
             originX: 'center',
             originY: 'center',
             selectable: false,
-            evented: false
+            evented: false,
+            overlayId: overlayData.id || overlayData.image_id || 'overlay-unknown',  // Mark as overlay for layering
+            isOverlay: true  // Additional marker
           })
           canvas.add(img)
         }
       }
     }
+
+    // Add text elements last (top layer) - text should ALWAYS be in front
+    if (slide.texts) {
+      for (const textData of slide.texts) {
+        const fabricText = new fabric.IText(textData.text, {
+          ...getTextStyling(textData.size * scaleFactor),
+          left: textData.position_x * scaleFactor,
+          top: textData.position_y * scaleFactor,
+          angle: textData.rotation,
+          textId: textData.id,  // Mark as text for layering
+          selectable: false,
+          evented: false
+        })
+        canvas.add(fabricText)
+        canvas.bringToFront(fabricText)  // Explicitly bring text to front
+      }
+    }
+
+    // CRITICAL: Final layering pass - ensure proper order for rendering
+    // This is the last chance to fix layering before canvas.toDataURL()
+    const objects = canvas.getObjects()
+
+    const backgroundObjects = objects.filter((obj: any) => obj.get('isBackground'))
+    const overlayObjects = objects.filter((obj: any) => obj.get('isOverlay') || obj.get('overlayId'))
+    const textObjects = objects.filter((obj: any) => obj.get('textId'))
+
+    // FORCE correct layering order by removing all and re-adding in correct sequence
+    // Store background color before clearing
+    const bgColor = canvas.backgroundColor
+    canvas.clear()
+    canvas.backgroundColor = bgColor
+
+    // Re-add in correct order: background -> overlays -> text
+    backgroundObjects.forEach((obj: any) => canvas.add(obj))
+    overlayObjects.forEach((obj: any) => canvas.add(obj))
+    textObjects.forEach((obj: any) => canvas.add(obj))
 
     canvas.renderAll()
     return canvas

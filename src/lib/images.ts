@@ -272,6 +272,56 @@ export async function deleteImage(imageId: string) {
   }
 }
 
+// Copy a product image to the regular images table for use in overlays
+export async function copyProductImageForOverlay(productImageId: string) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      throw new Error('User must be authenticated')
+    }
+
+    // First, fetch the product image details
+    const { data: productImage, error: fetchError } = await supabase
+      .from('product_images')
+      .select('*')
+      .eq('id', productImageId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError) throw fetchError
+    if (!productImage) throw new Error('Product image not found')
+
+    // Create a new entry in the images table
+    const { data: newImage, error: insertError } = await supabase
+      .from('images')
+      .insert({
+        collection_id: null, // No collection for overlay images
+        user_id: user.id,
+        storage_path: productImage.storage_path,
+        mime_type: productImage.mime_type,
+        bytes: productImage.bytes,
+        width: productImage.width,
+        height: productImage.height,
+        aspect_ratio: productImage.width && productImage.height ? `${productImage.width}:${productImage.height}` : null,
+        metadata: {
+          source: 'product_image',
+          product_id: productImage.product_id,
+          original_product_image_id: productImage.id
+        }
+      })
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    return { image: newImage as Image, error: null }
+  } catch (error) {
+    console.error('Error copying product image for overlay:', error)
+    return { image: null, error: error as Error }
+  }
+}
+
 export function getImageUrl(filePath: string) {
   try {
     // Use authenticated proxy so private buckets work client-side
