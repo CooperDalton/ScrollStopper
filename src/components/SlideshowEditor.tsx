@@ -1743,14 +1743,19 @@ export default function SlideshowEditor() {
     try {
       setIsCreating(true);
       const newSlideshow = await createSlideshow(undefined, undefined, newAspectRatio);
-      
+
       // Select the newly created slideshow and its first slide
       setSelectedSlideshowId(newSlideshow.id);
       if (newSlideshow.slides.length > 0) {
         setSelectedSlideId(newSlideshow.slides[0].id);
+        // Center the first slide after a delay to ensure DOM is ready
+        centerSlide(newSlideshow.slides[0].id, 100);
       }
       // Leave empty-state after creating/selecting a new slideshow
       setIsEditorCleared(false);
+
+      // Switch to drafts tab after creating new slideshow
+      handleSidebarMode('drafts');
     } catch (err) {
       console.error('Failed to create slideshow:', err);
       alert('Failed to create slideshow. Please try again.');
@@ -1891,7 +1896,10 @@ export default function SlideshowEditor() {
     const slideshowToRender = currentSlideshow; // snapshot to avoid selection changes affecting render
     setRenderProgress(prev => ({ ...prev, [slideshowToRender.id]: 0 }));
 
-    // Immediately switch the editor to an empty state so the user can't edit the one being rendered
+    // Switch to create tab so user can see rendering progress
+    handleSidebarMode('create');
+
+    // Clear the editor to prevent editing the slideshow being rendered
     setSelectedSlideshowId('');
     setSelectedSlideId('');
     updateSelectedTextObject(null);
