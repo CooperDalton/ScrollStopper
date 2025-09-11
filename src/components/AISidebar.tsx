@@ -3,6 +3,7 @@
 import React from 'react';
 import AspectRatioPicker from '@/components/editor/AspectRatioPicker';
 import { useProducts } from '@/hooks/useProducts';
+import { useCollections } from '@/hooks/useCollections';
 
 export default function AISidebar({
   onGenerate,
@@ -11,6 +12,7 @@ export default function AISidebar({
   onSelectImages,
   aspectRatio,
   onAspectRatioChange,
+  selectedCollectionIds,
 }: {
   onGenerate?: () => void;
   onAddRow?: () => void;
@@ -18,8 +20,10 @@ export default function AISidebar({
   onSelectImages?: () => void;
   aspectRatio?: string;
   onAspectRatioChange?: (val: string) => void;
+  selectedCollectionIds?: string[];
 }) {
   const { products, isLoading, isError } = useProducts();
+  const { collections } = useCollections();
   const [prompt, setPrompt] = React.useState('');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('');
 
@@ -107,6 +111,21 @@ export default function AISidebar({
           >
             Select Images
           </button>
+          {selectedCollectionIds && selectedCollectionIds.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <div className="text-xs font-medium text-[var(--color-text-muted)]">Selected Collections:</div>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {selectedCollectionIds.map((collectionId) => {
+                  const collection = collections.find(c => c.id === collectionId);
+                  return (
+                    <div key={collectionId} className="text-xs text-[var(--color-text)] bg-[var(--color-bg-tertiary)] px-2 py-1 rounded-md">
+                      {collection?.name || `Collection ${collectionId.slice(0, 8)}...`}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

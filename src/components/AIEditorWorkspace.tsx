@@ -1359,7 +1359,7 @@ export default function AIEditorWorkspace() {
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
             let finalJson = '';
-            
+
             const run = async () => {
               const res = await fetch('/api/slideshows/generate', {
                 method: 'POST',
@@ -1448,6 +1448,7 @@ export default function AIEditorWorkspace() {
         onSelectImages={() => setIsSelectCollectionsOpen(true)}
         aspectRatio={selectedAspectRatio}
         onAspectRatioChange={setSelectedAspectRatio}
+        selectedCollectionIds={selectedCollectionIds}
       />
       <div className="flex-1 flex flex-col overflow-hidden relative">
         
