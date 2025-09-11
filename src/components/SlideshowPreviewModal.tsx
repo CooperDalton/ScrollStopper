@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
-import JSZip from 'jszip';
+import { zip } from 'fflate';
 
 interface SlideshowPreviewModalProps {
   isOpen: boolean;
@@ -88,9 +88,9 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
     setIsDownloading(true);
     
     try {
-      const zip = new JSZip();
+      const files: Record<string, Uint8Array> = {};
       
-      // Fetch all images and add them to the zip
+      // Fetch all images and add them to the files object
       for (let i = 0; i < imageUrls.length; i++) {
         const imageUrl = imageUrls[i];
         const response = await fetch(imageUrl);
@@ -100,27 +100,36 @@ export default function SlideshowPreviewModal({ isOpen, onClose, imageUrls, titl
           continue;
         }
         
-        const blob = await response.blob();
+        const arrayBuffer = await response.arrayBuffer();
         const fileName = `slide-${i + 1}.${getFileExtension(imageUrl) || 'jpg'}`;
-        zip.file(fileName, blob);
+        files[fileName] = new Uint8Array(arrayBuffer);
       }
       
-      // Generate zip file and trigger download
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(zipBlob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `slideshow-images.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up
-      URL.revokeObjectURL(url);
+      // Create zip using fflate
+      zip(files, (err, data) => {
+        if (err) {
+          console.error('Error creating zip:', err);
+          setIsDownloading(false);
+          return;
+        }
+        
+        // Create blob and trigger download
+        const zipBlob = new Blob([data], { type: 'application/zip' });
+        const url = URL.createObjectURL(zipBlob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `slideshow-images.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+        setIsDownloading(false);
+      });
     } catch (error) {
       console.error('Error downloading images:', error);
-    } finally {
       setIsDownloading(false);
     }
   };

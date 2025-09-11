@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { getImageUrl } from '@/lib/images'
 import { fabric } from 'fabric'
+import { getTextStyling } from '@/lib/text-config'
 
 export interface SlideText {
   id: string;
@@ -68,19 +69,7 @@ const parseAspectRatio = (ratio: string) => {
   return w && h ? w / h : 9 / 16
 }
 
-const getTextStyling = (fontSize: number = 24) => ({
-  fontFamily: '"proxima-nova", sans-serif',
-  fontWeight: '600',
-  fontStyle: 'normal',
-  fill: '#ffffff',
-  textAlign: 'center' as const,
-  originX: 'center' as const,
-  originY: 'center' as const,
-  stroke: 'black',
-  charSpacing: -40,
-  lineHeight: 1.0,
-  fontSize
-})
+
 
 const scaleImageToFillCanvas = (
   img: fabric.Image,

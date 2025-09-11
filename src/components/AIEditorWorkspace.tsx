@@ -14,7 +14,7 @@ import EmptyState from '@/components/editor/EmptyState';
 import { fabric } from 'fabric';
 import { animateScrollX, animateScrollY, FAST_SCROLL_DURATION_X_MS, FAST_SCROLL_DURATION_Y_MS } from '@/lib/scroll';
 import { scaleImageToFillCanvas, loadFabricImage } from '@/components/editor/fabricUtils';
-import { FONT_SIZES, STROKE_WIDTHS, getStrokeWidthForFontSize, TEXT_STYLING } from '@/lib/text-config';
+import { FONT_SIZES, STROKE_WIDTHS, getStrokeWidthForFontSize, TEXT_STYLING, getTextStyling } from '@/lib/text-config';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 import { useSlideshows } from '@/hooks/useSlideshows';
 import { useRouter } from 'next/navigation';
@@ -585,19 +585,7 @@ export default function AIEditorWorkspace() {
   };
 
   // Text editing functions
-  const getTextStyling = (fontSize: number = 24) => ({
-    fontFamily: TEXT_STYLING.fontFamily,
-    fontWeight: TEXT_STYLING.fontWeight,
-    fill: TEXT_STYLING.fill,
-    stroke: 'black',
-    strokeWidth: getStrokeWidthForFontSize(fontSize),
-    textAlign: 'center' as const,
-    originX: 'center' as const,
-    originY: 'center' as const,
-    charSpacing: -40,
-    lineHeight: 1.0,
-    fontSize
-  });
+
 
 
 
