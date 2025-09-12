@@ -109,20 +109,19 @@ export default function Sidebar() {
                 <UserIcon />
               </div>
             )}
-            <div>
-              <div className="text-sm font-medium text-[var(--color-text)]">
-                {user?.user_metadata?.full_name || user?.email || 'Guest'}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium text-[var(--color-text)] truncate">
+                  {user?.user_metadata?.full_name || user?.email || 'Guest'}
+                </div>
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-600 text-white flex-shrink-0">
+                  Pro
+                </span>
               </div>
               <div className="text-xs text-[var(--color-text-muted)]">
                 {user?.email || 'Not signed in'}
               </div>
             </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-text-muted)]">Plan</span>
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-600 text-white">
-              Pro
-            </span>
           </div>
         </div>
 

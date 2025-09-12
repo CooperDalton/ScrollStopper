@@ -305,17 +305,17 @@ const PricingSection = () => (
       </div>
 
       {/* Pricing Card */}
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-md mx-auto">
         <div className="bg-white rounded-3xl shadow-xl border-2 border-purple-500 overflow-hidden relative">
           <div className="p-8">
             {/* Price */}
             <div className="text-center mb-8">
               <div className="flex items-center justify-center mb-2">
-                <span className="text-5xl font-bold text-[var(--color-text)]">$9.99</span>
+                <span className="text-5xl font-bold text-[var(--color-text)]">$18</span>
                 <span className="text-xl text-[var(--color-text-muted)] ml-2">/month</span>
               </div>
               <div className="bg-gradient-primary text-white px-4 py-2 rounded-full text-sm font-semibold inline-block">
-                🚀 Beta Pricing! Will increase soon
+                🚀 Early Bird Pricing! Will increase soon
               </div>
             </div>
 
@@ -340,8 +340,9 @@ const PricingSection = () => (
                   </svg>
                 </div>
                 <div>
-                  <p className="text-[var(--color-text)] font-medium">Manual Slideshow Creation</p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Up to 50 slideshows/month <span className="text-orange-600 font-medium">($0.25 each additional)</span></p>
+                  <p className="text-[var(--color-text)] font-medium">Easy Slideshow Creator
+                  </p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to 50 slideshows/month</p>
                 </div>
               </div>
 
@@ -353,7 +354,7 @@ const PricingSection = () => (
                 </div>
                 <div>
                   <p className="text-[var(--color-text)] font-medium">AI-Generated Slideshows</p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Up to 15 AI generations/month <span className="text-orange-600 font-medium">($1.99 each additional)</span></p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to 15 AI generations/month</p>
                 </div>
               </div>
 
@@ -454,7 +455,6 @@ export default function Home() {
       <HeroSection />
       <FeaturesSection />
       <PricingSection />
-      <Footer />
     </div>
   );
 }
