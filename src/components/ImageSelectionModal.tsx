@@ -176,23 +176,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
                   >
                     <div className="flex flex-col text-center">
                       <div className="mb-3">
-                        {item.type === 'collection' ? (
-                          <CollectionThumbnail collection={item} />
-                        ) : (
-                          <div className="w-full aspect-square bg-[var(--color-bg-tertiary)] rounded-lg overflow-hidden">
-                            {item.sample_images.length > 0 ? (
-                              <img
-                                src={getImageUrl(item.sample_images[0].storage_path)}
-                                alt={item.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-                                <FolderIcon />
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <CollectionThumbnail collection={item} />
                       </div>
                       <h3 className="font-semibold text-[var(--color-text)] text-sm">
                         {item.name}

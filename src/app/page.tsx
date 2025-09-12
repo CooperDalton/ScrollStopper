@@ -294,23 +294,100 @@ const FeaturesSection = () => (
   </section>
 );
 
-// CTA Section
-const CTASection = () => (
-  <section className="py-20 bg-gradient-primary">
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-        Ready to Transform Your Content?
+// Pricing Section
+const PricingSection = () => (
+  <section className="py-20 bg-gradient-to-br from-gray-50 to-white">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="text-center mb-12">
+        <h2 className="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
+          Pricing
       </h2>
-      <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-        Join thousands of creators who are already using AI to generate scroll-stopping content.
-      </p>
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <button className="bg-white text-[var(--color-primary)] px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-colors">
-          Start Free Trial
+      </div>
+
+      {/* Pricing Card */}
+      <div className="max-w-lg mx-auto">
+        <div className="bg-white rounded-3xl shadow-xl border-2 border-purple-500 overflow-hidden relative">
+          <div className="p-8">
+            {/* Price */}
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center mb-2">
+                <span className="text-5xl font-bold text-[var(--color-text)]">$9.99</span>
+                <span className="text-xl text-[var(--color-text-muted)] ml-2">/month</span>
+              </div>
+              <div className="bg-gradient-primary text-white px-4 py-2 rounded-full text-sm font-semibold inline-block">
+                🚀 Beta Pricing! Will increase soon
+              </div>
+            </div>
+
+            {/* Features List */}
+            <div className="space-y-4 mb-8">
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[var(--color-text)] font-medium">AI-Powered Content Generation</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Content Creation in a single click</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[var(--color-text)] font-medium">Manual Slideshow Creation</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to 50 slideshows/month <span className="text-orange-600 font-medium">($0.25 each additional)</span></p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[var(--color-text)] font-medium">AI-Generated Slideshows</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to 15 AI generations/month <span className="text-orange-600 font-medium">($1.99 each additional)</span></p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[var(--color-text)] font-medium">HD Video Export</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">1080p & 4K video downloads</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[var(--color-text)] font-medium">Priority Support</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Email & chat support</p>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA Button */}
+            <button className="w-full bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-lg transition-all duration-300 animate-glow">
+              Get Started Now
         </button>
-        <button className="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-[var(--color-primary)] transition-colors">
-          Request Demo
-        </button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -376,7 +453,7 @@ export default function Home() {
       <Header />
       <HeroSection />
       <FeaturesSection />
-      <CTASection />
+      <PricingSection />
       <Footer />
     </div>
   );

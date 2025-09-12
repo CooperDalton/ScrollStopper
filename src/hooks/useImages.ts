@@ -51,10 +51,9 @@ export function useImages(collectionId: string | null) {
     mutate();
     mutateGlobal('collections');
 
-    // If Pro is toggled on (client test), call AI describe endpoint and persist (non-blocking)
+    // Automatically process image with AI for enhanced metadata (non-blocking)
     try {
-      const proEnabled = typeof window !== 'undefined' && localStorage.getItem('proEnabled') === 'true';
-      if (proEnabled && result.image) {
+      if (result.image) {
         const storagePath = result.image.storage_path || result.image.file_path || '';
         if (storagePath) {
           const imageUrl = getImageUrl(storagePath);
@@ -141,10 +140,9 @@ export function useImages(collectionId: string | null) {
     mutate();
     mutateGlobal('collections');
 
-    // Optionally process AI for each uploaded image when Pro test is enabled (non-blocking)
+    // Automatically process AI for each uploaded image for enhanced metadata (non-blocking)
     try {
-      const proEnabled = typeof window !== 'undefined' && localStorage.getItem('proEnabled') === 'true';
-      if (proEnabled && results.length > 0) {
+      if (results.length > 0) {
         void (async () => {
           try {
             await Promise.allSettled(results.map(async (img) => {

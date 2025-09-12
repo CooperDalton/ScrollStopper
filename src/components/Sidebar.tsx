@@ -37,6 +37,12 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const AIEditorIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+  </svg>
+);
+
 const UserIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -46,7 +52,7 @@ const UserIcon = () => (
 const navigation = [
   { name: 'Products', href: '/products', icon: ProductsIcon },
   { name: 'Editor', href: '/editor', icon: EditorIcon },
-  { name: 'AI Editor', href: '/ai-editor', icon: EditorIcon },
+  { name: 'AI Editor', href: '/ai-editor', icon: AIEditorIcon },
   { name: 'Images', href: '/images', icon: ImagesIcon },
   { name: 'Scheduler', href: '/scheduler', icon: SchedulerIcon },
 ];
@@ -54,32 +60,6 @@ const navigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [proEnabled, setProEnabled] = React.useState<boolean>(false);
-
-  // Initialize from localStorage and sync across tabs
-  React.useEffect(() => {
-    try {
-      const saved = localStorage.getItem('proEnabled');
-      setProEnabled(saved === 'true');
-    } catch (_) {
-      // noop
-    }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'proEnabled') {
-        setProEnabled(e.newValue === 'true');
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  const togglePro = () => {
-    setProEnabled(prev => {
-      const next = !prev;
-      try { localStorage.setItem('proEnabled', String(next)); } catch (_) {}
-      return next;
-    });
-  };
 
   return (
     <div className="flex h-screen w-64 flex-col bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)]">
@@ -140,31 +120,12 @@ export default function Sidebar() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-[var(--color-text-muted)]">Plan</span>
-            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${proEnabled ? 'bg-emerald-600' : 'bg-[var(--color-primary)]'} text-white`}>
-              {proEnabled ? 'Pro (test)' : 'Free'}
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-600 text-white">
+              Pro
             </span>
           </div>
         </div>
 
-        {/* Pro test toggle */}
-        <div className="flex items-center justify-between w-full px-3 py-3 rounded-xl text-sm transition-all duration-200 bg-[var(--color-bg-tertiary)]">
-          <div className="flex items-center gap-3 text-[var(--color-text)]">
-            <SettingsIcon />
-            <div className="flex flex-col">
-              <span className="font-medium">Pro features (test)</span>
-              <span className="text-xs text-[var(--color-text-muted)]">Enable AI image processing</span>
-            </div>
-          </div>
-          <button
-            aria-label="Toggle Pro test mode"
-            onClick={togglePro}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${proEnabled ? 'bg-emerald-500' : 'bg-[var(--color-border)]'}`}
-          >
-            <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${proEnabled ? 'translate-x-5' : 'translate-x-1'}`}
-            />
-          </button>
-        </div>
       </div>
     </div>
   );

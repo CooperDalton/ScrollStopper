@@ -130,7 +130,7 @@ export default function ProductsPage() {
             <div>
               <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">Products</h1>
               <p className="text-[var(--color-text-muted)]">
-                Manage your product information to help AI create better content
+                Include product information to help AI create better content
               </p>
             </div>
             
