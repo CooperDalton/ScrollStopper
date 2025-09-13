@@ -2,33 +2,35 @@
 -- Table order and constraints may not be valid for execution.
 
 CREATE TABLE public.image_collections (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid,
   name text,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT image_collections_pkey PRIMARY KEY (id),
   CONSTRAINT image_collections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.images (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  collection_id uuid,
+  storage_path text NOT NULL,
+  created_at timestamp without time zone DEFAULT now(),
   metadata jsonb NOT NULL,
-  search_tsv tsvector,
   categories ARRAY,
   objects ARRAY,
+  search_tsv tsvector,
+  user_id uuid NOT NULL,
   mime_type text,
   bytes bigint,
   width integer,
   height integer,
   aspect_ratio text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
-  user_id uuid NOT NULL,
-  storage_path text NOT NULL,
-  collection_id uuid,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT images_pkey PRIMARY KEY (id),
   CONSTRAINT images_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.image_collections(id),
   CONSTRAINT images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.product_images (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp without time zone DEFAULT now(),
   user_id uuid NOT NULL,
   product_id uuid NOT NULL,
   storage_path text NOT NULL,
@@ -38,37 +40,59 @@ CREATE TABLE public.product_images (
   bytes bigint CHECK (bytes >= 0),
   user_description text,
   ai_description text,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT product_images_pkey PRIMARY KEY (id),
   CONSTRAINT product_images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT product_images_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
 CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid,
+  name text,
+  description text,
+  created_at timestamp without time zone DEFAULT now(),
   industry ARRAY,
   product_type ARRAY,
   matching_industries ARRAY,
   matching_product_types ARRAY,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  created_at timestamp without time zone DEFAULT now(),
-  user_id uuid,
-  name text,
-  description text,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.public_image_collections (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT public_image_collections_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.public_images (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  collection_id uuid,
+  storage_path text NOT NULL,
+  metadata jsonb,
+  search_tsv tsvector,
+  categories ARRAY,
+  objects ARRAY,
+  mime_type text,
+  bytes bigint,
+  width integer CHECK (width > 0),
+  height integer CHECK (height > 0),
+  aspect_ratio text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT public_images_pkey PRIMARY KEY (id),
+  CONSTRAINT public_images_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.public_image_collections(id)
+);
 CREATE TABLE public.slide_example_frames (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   example_id uuid NOT NULL,
   frame_index integer NOT NULL,
   image_url text,
   description text NOT NULL,
   text_on_slide text,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT slide_example_frames_pkey PRIMARY KEY (id),
   CONSTRAINT slide_example_frames_example_id_fkey FOREIGN KEY (example_id) REFERENCES public.slide_examples(id)
 );
 CREATE TABLE public.slide_examples (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   source_url text NOT NULL,
   industry text,
   product_type text,
@@ -76,68 +100,82 @@ CREATE TABLE public.slide_examples (
   call_to_action text,
   summary text,
   performance jsonb,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT slide_examples_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.slide_overlays (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   slide_id uuid,
   image_id uuid,
   position_x integer,
   position_y integer,
   rotation integer,
   size integer,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT slide_overlays_pkey PRIMARY KEY (id),
-  CONSTRAINT slide_overlays_slide_id_fkey FOREIGN KEY (slide_id) REFERENCES public.slides(id),
-  CONSTRAINT slide_overlays_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.images(id)
+  CONSTRAINT slide_overlays_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.images(id),
+  CONSTRAINT slide_overlays_slide_id_fkey FOREIGN KEY (slide_id) REFERENCES public.slides(id)
 );
 CREATE TABLE public.slide_texts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   slide_id uuid,
   text text,
   position_x integer,
   position_y integer,
   size integer,
   rotation integer,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   font text DEFAULT 'default'::text,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT slide_texts_pkey PRIMARY KEY (id),
   CONSTRAINT slide_texts_slide_id_fkey FOREIGN KEY (slide_id) REFERENCES public.slides(id)
 );
 CREATE TABLE public.slides (
-  index smallint NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   slideshow_id uuid,
   background_image_id uuid,
   duration_seconds integer,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamp without time zone DEFAULT now(),
+  index smallint NOT NULL,
   CONSTRAINT slides_pkey PRIMARY KEY (id),
   CONSTRAINT slides_background_image_id_fkey FOREIGN KEY (background_image_id) REFERENCES public.images(id),
   CONSTRAINT slides_slideshow_id_fkey FOREIGN KEY (slideshow_id) REFERENCES public.slideshows(id)
 );
 CREATE TABLE public.slideshows (
-  aspect_ratio text DEFAULT '9:16'::text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
-  date_modified timestamp without time zone DEFAULT now(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid,
   product_id uuid,
   caption text,
-  tik_tok_post_id text,
-  frame_paths ARRAY,
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
   status text DEFAULT 'draft'::text,
   upload_status text DEFAULT 'pending'::text,
+  tik_tok_post_id text,
+  frame_paths ARRAY,
   created_at timestamp without time zone DEFAULT now(),
+  aspect_ratio text DEFAULT '9:16'::text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
+  date_modified timestamp without time zone DEFAULT now(),
   CONSTRAINT slideshows_pkey PRIMARY KEY (id),
   CONSTRAINT slideshows_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
   CONSTRAINT slideshows_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.usage_counters (
+  user_id uuid NOT NULL,
+  metric text NOT NULL,
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  used bigint NOT NULL DEFAULT 0,
+  hard_limit bigint,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT usage_counters_pkey PRIMARY KEY (user_id, metric, period_start),
+  CONSTRAINT usage_counters_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.users (
   id uuid NOT NULL,
   full_name text,
   role text DEFAULT 'free'::text,
   created_at timestamp without time zone DEFAULT now(),
+  stripe_customer_id text,
+  stripe_subscription_status text,
+  stripe_price_id text,
+  current_period_end timestamp with time zone,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

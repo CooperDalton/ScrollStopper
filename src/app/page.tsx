@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from "next/image";
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { subscriptionTiers } from '@/data/subscriptionTiers';
 
 // Icon Components
 const MenuIcon = () => (
@@ -258,37 +259,77 @@ const FeaturesSection = () => (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16">
         <h2 className="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
-          Powered by <span className="text-gradient">Advanced AI</span>
+          Everything you need to create <span className="text-gradient">viral content</span>
         </h2>
         <p className="text-xl text-[var(--color-text-muted)] max-w-2xl mx-auto">
-          Make data-driven decisions with AI insights that transform your content strategy.
+          Professional tools and AI-powered features to transform your content strategy.
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         {[
           {
+            icon: "🎬",
+            title: "Slideshow Creator",
+            description: "Build stunning slideshows with our intuitive drag-and-drop editor. Perfect for showcasing your products and ideas.",
+            status: "available"
+          },
+          {
             icon: "🤖",
-            title: "AI Content Analysis",
-            description: "Advanced algorithms analyze your screenshots and generate optimized content strategies."
+            title: "AI Slideshow Creator", 
+            description: "Let AI do the work! Generate compelling slideshows automatically from your screenshots and product images.",
+            status: "available"
           },
           {
-            icon: "⚡",
-            title: "Instant Generation",
-            description: "Create scroll-stopping content in seconds, not hours. Efficiency redefined."
+            icon: "📸",
+            title: "1080p Image Export",
+            description: "Export your creations in crisp 1080p resolution, ready for any platform or marketing campaign.",
+            status: "available"
           },
           {
-            icon: "🎯",
-            title: "Precision Targeting",
-            description: "AI identifies the best content angles for maximum engagement and conversions."
+            icon: "🖼️",
+            title: "Image Library",
+            description: "Access our curated library of high-quality images to enhance your slideshows and content.",
+            status: "available"
+          },
+          {
+            icon: "📱",
+            title: "TikTok Scheduler",
+            description: "Schedule your content directly to TikTok for optimal engagement timing.",
+            status: "coming-soon"
+          },
+          {
+            icon: "📷",
+            title: "Instagram Scheduler",
+            description: "Plan and schedule your Instagram posts seamlessly from one dashboard.",
+            status: "coming-soon"
           }
         ].map((feature, index) => (
-          <div key={index} className="text-center p-8 rounded-3xl bg-gradient-light hover:shadow-lg transition-all duration-300">
-            <div className="text-4xl mb-4">{feature.icon}</div>
+          <div key={index} className="relative text-center p-8 rounded-3xl bg-gradient-light hover:shadow-lg transition-all duration-300 group">
+            {feature.status === "coming-soon" && (
+              <div className="absolute top-4 right-4 bg-gradient-primary text-white text-xs font-semibold px-3 py-1 rounded-full">
+                Coming Soon
+              </div>
+            )}
+            <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">{feature.icon}</div>
             <h3 className="text-xl font-bold text-[var(--color-text)] mb-4">{feature.title}</h3>
-            <p className="text-[var(--color-text-muted)]">{feature.description}</p>
+            <p className={`${feature.status === "coming-soon" ? "text-[var(--color-text-muted)]/70" : "text-[var(--color-text-muted)]"}`}>
+              {feature.description}
+            </p>
           </div>
         ))}
+      </div>
+
+      {/* Additional Features Highlight */}
+      <div className="mt-16 text-center">
+        <div className="bg-gradient-light rounded-3xl p-8 max-w-3xl mx-auto border border-[var(--color-primary)]/20">
+          <h3 className="text-2xl font-bold text-[var(--color-text)] mb-4">
+            More features on the way! 🚀
+          </h3>
+          <p className="text-[var(--color-text-muted)]">
+            We're constantly adding new features based on user feedback. Join our community to help shape the future of ScrollStopper.
+          </p>
+        </div>
       </div>
     </div>
   </section>
@@ -311,7 +352,7 @@ const PricingSection = () => (
             {/* Price */}
             <div className="text-center mb-8">
               <div className="flex items-center justify-center mb-2">
-                <span className="text-5xl font-bold text-[var(--color-text)]">$18</span>
+                <span className="text-5xl font-bold text-[var(--color-text)]">${subscriptionTiers.Pro.priceInCents / 100}</span>
                 <span className="text-xl text-[var(--color-text-muted)] ml-2">/month</span>
               </div>
               <div className="bg-gradient-primary text-white px-4 py-2 rounded-full text-sm font-semibold inline-block">
@@ -342,7 +383,7 @@ const PricingSection = () => (
                 <div>
                   <p className="text-[var(--color-text)] font-medium">Easy Slideshow Creator
                   </p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Up to 50 slideshows/month</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to {subscriptionTiers.Pro.maxNumberOfSlideshows} slideshows/month</p>
                 </div>
               </div>
 
@@ -354,7 +395,7 @@ const PricingSection = () => (
                 </div>
                 <div>
                   <p className="text-[var(--color-text)] font-medium">AI-Generated Slideshows</p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Up to 15 AI generations/month</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Up to {subscriptionTiers.Pro.maxNumberOfAIGenerations} AI generations/month</p>
                 </div>
               </div>
 
