@@ -333,6 +333,19 @@ export function getImageUrl(filePath: string) {
   }
 } 
 
+// Public demo image URL helper for the public-images bucket (no auth required)
+export function getPublicImageUrlFromPath(filePath: string) {
+  try {
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!base) return ''
+    // Direct public object URL; files are readable by anyone
+    return `${base}/storage/v1/object/public/public-images/${filePath}`
+  } catch (error) {
+    console.error('Error generating public image URL:', error)
+    return ''
+  }
+}
+
 export interface ImageAIDescriptionResult {
   short_description: string
   long_description: string

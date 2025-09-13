@@ -4,9 +4,11 @@ import React, { useState, useMemo } from 'react';
 import { useCollections } from '@/hooks/useCollections';
 import { useImages } from '@/hooks/useImages';
 import { useAllProductImages } from '@/hooks/useProducts';
-import { getImageUrl } from '@/lib/images';
+import { getImageUrl, getPublicImageUrlFromPath } from '@/lib/images';
 import CollectionThumbnail from './CollectionThumbnail';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { usePublicCollections } from '@/hooks/usePublicCollections';
+import { usePublicImages } from '@/hooks/usePublicImages';
 
 interface ImageSelectionModalProps {
   isOpen: boolean;
@@ -40,10 +42,13 @@ const ArrowLeftIcon = () => (
 export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, title = 'Select Background Image' }: ImageSelectionModalProps) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<'collection' | 'public' | 'product' | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
 
   const { collections, isLoading: collectionsLoading } = useCollections();
-  const { images, isLoading: imagesLoading } = useImages(selectedCollectionId);
+  const { collections: publicCollections, isLoading: publicCollectionsLoading } = usePublicCollections();
+  const { images, isLoading: imagesLoading } = useImages(selectedType === 'collection' ? selectedCollectionId : null);
+  const { images: publicImages, isLoading: publicImagesLoading } = usePublicImages(selectedType === 'public' ? selectedCollectionId : null);
   const { productImages, isLoading: productImagesLoading } = useAllProductImages();
 
   // Create combined collection list with regular collections and product pseudo-collections
@@ -74,10 +79,11 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
     }>);
 
     return [
+      ...(publicCollections || []).map(c => ({ ...c, type: 'public' as const })),
       ...collections.map(c => ({ ...c, type: 'collection' as const })),
       ...productCollections.map(p => ({ ...p, type: 'product' as const }))
     ];
-  }, [collections, productImages]);
+  }, [publicCollections, collections, productImages]);
 
   const selectedItem = combinedCollections.find(c =>
     c.id === selectedCollectionId ||
@@ -87,6 +93,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
   const handleClose = () => {
     setSelectedCollectionId(null);
     setSelectedProductId(null);
+    setSelectedType(null);
     setImageLoadErrors(new Set());
     onClose();
   };
@@ -100,11 +107,23 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
     handleClose();
   };
 
+  const handlePublicImageSelect = (imageId: string, storagePath: string) => {
+    const imageUrl = getPublicImageUrlFromPath(storagePath);
+    onImageSelect(imageUrl, imageId, false);
+    handleClose();
+  };
+
   const handleCollectionSelect = (item: typeof combinedCollections[0]) => {
     if (item.type === 'collection') {
+      setSelectedType('collection');
+      setSelectedCollectionId(item.id);
+      setSelectedProductId(null);
+    } else if (item.type === 'public') {
+      setSelectedType('public');
       setSelectedCollectionId(item.id);
       setSelectedProductId(null);
     } else {
+      setSelectedType('product');
       setSelectedProductId(item.product_id);
       setSelectedCollectionId(null);
     }
@@ -114,6 +133,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
   const handleBackToCollections = () => {
     setSelectedCollectionId(null);
     setSelectedProductId(null);
+    setSelectedType(null);
     setImageLoadErrors(new Set());
   };
 
@@ -162,7 +182,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
         {!selectedItem ? (
           // Collections View
           <div>
-            {collectionsLoading || productImagesLoading ? (
+            {collectionsLoading || publicCollectionsLoading || productImagesLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
               </div>
@@ -207,7 +227,7 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
         ) : (
           // Images View
           <div>
-            {(imagesLoading && selectedItem?.type === 'collection') || (productImagesLoading && selectedItem?.type === 'product') ? (
+            {(imagesLoading && selectedItem?.type === 'collection') || (publicImagesLoading && selectedItem?.type === 'public') || (productImagesLoading && selectedItem?.type === 'product') ? (
               <div className="flex items-center justify-center py-12">
                 <div className="w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
               </div>
@@ -224,6 +244,62 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
                       <button
                         key={image.id}
                         onClick={() => handleImageSelect(image.id, path, false)}
+                        className="aspect-[9/16] bg-[var(--color-bg-secondary)] rounded-lg overflow-hidden border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors group"
+                      >
+                        {hasError ? (
+                          <div className="w-full h-full flex items-center justify-center bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] text-xs">
+                            <div className="text-center p-2">
+                              <div className="mb-1">❌</div>
+                              <div>Failed to load</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <img
+                            src={imageUrl}
+                            alt="Background option"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            onError={() => {
+                              setImageLoadErrors(prev => new Set(prev).add(image.id));
+                            }}
+                            onLoad={() => {
+                              setImageLoadErrors(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(image.id);
+                                return newSet;
+                              });
+                            }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="max-w-md mx-auto">
+                    <div className="w-24 h-24 bg-[var(--color-bg-secondary)] rounded-full flex items-center justify-center mx-auto mb-6 text-[var(--color-text-muted)]">
+                      <FolderIcon />
+                    </div>
+                    <h3 className="text-xl font-semibold text-[var(--color-text)] mb-2">
+                      No images in this collection
+                    </h3>
+                    <p className="text-[var(--color-text-muted)]">
+                      Add some images to this collection to use as backgrounds.
+                    </p>
+                  </div>
+                </div>
+              )
+            ) : selectedItem?.type === 'public' ? (
+              publicImages.length > 0 ? (
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  {publicImages.map((image) => {
+                    const imageUrl = image.storage_path ? getPublicImageUrlFromPath(image.storage_path) : '';
+                    const hasError = imageLoadErrors.has(image.id);
+
+                    return (
+                      <button
+                        key={image.id}
+                        onClick={() => handlePublicImageSelect(image.id, image.storage_path)}
                         className="aspect-[9/16] bg-[var(--color-bg-secondary)] rounded-lg overflow-hidden border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors group"
                       >
                         {hasError ? (

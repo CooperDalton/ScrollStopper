@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { getImageUrl, type ImageCollection, type Image } from '@/lib/images';
+import { getImageUrl, getPublicImageUrlFromPath, type ImageCollection, type Image } from '@/lib/images';
 
 interface CollectionThumbnailProps {
   collection: ImageCollection | {
@@ -40,10 +40,14 @@ export default function CollectionThumbnail({ collection, className = "w-full h-
       {Array.from({ length: 4 }).map((_, index: number) => {
         const image = sampleImages[index];
         if (image) {
+          const isPublic = (collection as any).type === 'public';
+          const src = isPublic
+            ? getPublicImageUrlFromPath((image as any).storage_path)
+            : getImageUrl((image as any).storage_path || (image as any).file_path);
           return (
             <div key={image.id} className="flex-1 overflow-hidden bg-[var(--color-bg-tertiary)]">
               <img
-                src={getImageUrl((image as any).storage_path || (image as any).file_path)}
+                src={src}
                 alt={`${collection.name} ${index + 1}`}
                 className="w-full h-full object-cover"
                 onError={(e) => {
