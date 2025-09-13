@@ -1359,12 +1359,25 @@ export default function AIEditorWorkspace() {
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden flex-1">
       <AISidebar
         onAddRow={handleAddRow}
-        onRunGenerate={({ productId, prompt }) => {
+        onRunGenerate={async ({ productId, prompt }) => {
           try {
             setAiThoughts('');
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
             let finalJson = '';
+            const billing = await fetch('/api/billing/status').then((r) => r.json());
+            if (!billing.isSubscribed) {
+              alert('A paid subscription is required to generate slideshows.');
+              setIsGenerating(false);
+              setGenerationCompleted(true);
+              return;
+            }
+            if (billing.remainingAIGenerations <= 0) {
+              alert('You have reached your AI generation limit for this month.');
+              setIsGenerating(false);
+              setGenerationCompleted(true);
+              return;
+            }
 
             const run = async () => {
               const res = await fetch('/api/slideshows/generate', {

@@ -1942,6 +1942,15 @@ export default function SlideshowEditor() {
   }, [rerenderIds, slideshows]);
 
   const handleRender = async () => {
+    const billing = await fetch('/api/billing/status').then((r) => r.json());
+    if (!billing.isSubscribed) {
+      alert('A paid subscription is required to render videos.');
+      return;
+    }
+    if (billing.remainingSlides <= 0) {
+      alert('You have reached your slideshow limit for this month.');
+      return;
+    }
     if (!currentSlideshow) return;
     const slideshowToRender = currentSlideshow; // snapshot to avoid selection changes affecting render
     setRenderProgress(prev => ({ ...prev, [slideshowToRender.id]: 0 }));
