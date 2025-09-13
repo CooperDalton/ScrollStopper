@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import Image from "next/image";
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { subscriptionTiers } from '@/data/subscriptionTiers';
+import GetStartedButton from '@/components/GetStartedButton';
 
 // Icon Components
 const MenuIcon = () => (
@@ -100,18 +100,14 @@ const Header = () => {
                 <button onClick={handleSignOut} className="btn-outline">
                   Log Out
                 </button>
-                <Link href="/editor" className="btn-gradient">
-                  Get Started
-                </Link>
+                <GetStartedButton className="btn-gradient" />
               </>
             ) : (
               <>
                 <button onClick={handleSignIn} className="btn-outline">
                   Sign In
                 </button>
-                <Link href="/editor" className="btn-gradient">
-                  Get Started
-                </Link>
+                <GetStartedButton className="btn-gradient" />
               </>
             )}
           </div>
@@ -149,18 +145,14 @@ const Header = () => {
                     <button onClick={handleSignOut} className="btn-outline">
                       Log Out
                     </button>
-                    <Link href="/editor" className="btn-gradient">
-                      Get Started
-                    </Link>
+                    <GetStartedButton className="btn-gradient" />
                   </>
                 ) : (
                   <>
                     <button onClick={handleSignIn} className="btn-outline">
                       Sign In
                     </button>
-                    <Link href="/editor" className="btn-gradient">
-                      Get Started
-                    </Link>
+                    <GetStartedButton className="btn-gradient" />
                   </>
                 )}
               </div>
@@ -425,9 +417,9 @@ const PricingSection = () => (
             </div>
 
             {/* CTA Button */}
-            <button className="w-full bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-lg transition-all duration-300 animate-glow">
+            <GetStartedButton className="w-full bg-gradient-primary text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-lg transition-all duration-300 animate-glow">
               Get Started Now
-        </button>
+            </GetStartedButton>
           </div>
         </div>
       </div>
