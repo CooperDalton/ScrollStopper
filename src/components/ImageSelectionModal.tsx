@@ -44,12 +44,33 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<'collection' | 'public' | 'product' | null>(null);
   const [imageLoadErrors, setImageLoadErrors] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'public' | 'my-collections'>(() => {
+    // Load from localStorage, default to 'my-collections'
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('image-selection-modal-view-mode');
+      return (saved === 'public' || saved === 'my-collections') ? saved : 'my-collections';
+    }
+    return 'my-collections';
+  });
 
   const { collections, isLoading: collectionsLoading } = useCollections();
   const { collections: publicCollections, isLoading: publicCollectionsLoading } = usePublicCollections();
   const { images, isLoading: imagesLoading } = useImages(selectedType === 'collection' ? selectedCollectionId : null);
   const { images: publicImages, isLoading: publicImagesLoading } = usePublicImages(selectedType === 'public' ? selectedCollectionId : null);
   const { productImages, isLoading: productImagesLoading } = useAllProductImages();
+
+  // Handle view mode change with localStorage persistence
+  const handleViewModeChange = (mode: 'public' | 'my-collections') => {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('image-selection-modal-view-mode', mode);
+    }
+    // Reset selection when switching views
+    setSelectedCollectionId(null);
+    setSelectedProductId(null);
+    setSelectedType(null);
+    setImageLoadErrors(new Set());
+  };
 
   // Create combined collection list with regular collections and product pseudo-collections
   const combinedCollections = useMemo(() => {
@@ -78,12 +99,21 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
       sample_images: typeof productImages;
     }>);
 
-    return [
+    const allCollections = [
       ...(publicCollections || []).map(c => ({ ...c, type: 'public' as const })),
       ...collections.map(c => ({ ...c, type: 'collection' as const })),
       ...productCollections.map(p => ({ ...p, type: 'product' as const }))
     ];
-  }, [publicCollections, collections, productImages]);
+
+    // Filter based on view mode
+    if (viewMode === 'public') {
+      return allCollections.filter(c => c.type === 'public');
+    } else if (viewMode === 'my-collections') {
+      return allCollections.filter(c => c.type === 'collection' || c.type === 'product');
+    }
+
+    return allCollections;
+  }, [publicCollections, collections, productImages, viewMode]);
 
   const selectedItem = combinedCollections.find(c =>
     c.id === selectedCollectionId ||
@@ -177,6 +207,32 @@ export default function ImageSelectionModal({ isOpen, onClose, onImageSelect, ti
             <XIcon />
           </button>
         </div>
+
+        {/* View Mode Buttons */}
+        {!selectedItem && (
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => handleViewModeChange('my-collections')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                viewMode === 'my-collections'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)]'
+              }`}
+            >
+              My Collections
+            </button>
+            <button
+              onClick={() => handleViewModeChange('public')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                viewMode === 'public'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-bg-secondary)] text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)]'
+              }`}
+            >
+              Public
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         {!selectedItem ? (

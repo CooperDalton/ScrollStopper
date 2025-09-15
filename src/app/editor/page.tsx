@@ -1,10 +1,15 @@
 'use client';
 
 import React, { Suspense } from 'react';
-import SlideshowEditor from '../../components/SlideshowEditor';
 import Sidebar from '../../components/Sidebar';
+import dynamicImport from 'next/dynamic';
 
 export const dynamic = 'force-dynamic';
+
+const SlideshowEditor = dynamicImport(() => import('../../components/SlideshowEditor'), {
+  ssr: false,
+  loading: () => <div className="p-6 text-[var(--color-text-muted)]">Loading editor…</div>,
+});
 
 export default function EditorPage() {
   return (

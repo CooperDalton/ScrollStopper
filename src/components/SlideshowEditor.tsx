@@ -18,7 +18,7 @@ import ImageSelectionModal from './ImageSelectionModal';
 import SlideshowPreviewModal from './SlideshowPreviewModal';
 import { useSlideshows } from '@/hooks/useSlideshows';
 import { supabase } from '@/lib/supabase';
-import { copyProductImageForOverlay } from '@/lib/images';
+import { copyProductImageForOverlay, importPublicImageToUserImages } from '@/lib/images';
 import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlideshows';
 
 // Icons
@@ -1539,16 +1539,15 @@ export default function SlideshowEditor() {
     if (!currentSlide) return;
 
     try {
-      // Update local state immediately for instant UI feedback
+      const isPublic = imageUrl.includes('/public-images/');
+
+      // 1) Optimistic UI: show immediately
       updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
         background_image_id: imageId,
         backgroundImage: imageUrl
       });
 
-      // Automatically sync to Supabase
-      await updateSlideBackground(selectedSlideId, imageId);
-
-      // Update canvas background
+      // Update canvas background (optimistic)
       const canvas = canvasRefs.current[selectedSlideId];
       if (canvas) {
         // Clear existing background images
@@ -1580,6 +1579,32 @@ export default function SlideshowEditor() {
         });
       }
 
+      // 2) If public, import and persist in the background; otherwise persist now
+      if (isPublic) {
+        const idx = imageUrl.indexOf('/public-images/');
+        const storagePath = idx >= 0 ? decodeURIComponent(imageUrl.substring(idx + '/public-images/'.length)) : '';
+        if (storagePath) {
+          (async () => {
+            const { image, imageUrl: userUrl, error } = await importPublicImageToUserImages(storagePath, { publicImageId: imageId });
+            if (error || !image) {
+              console.error('[Background Import] Failed to import public image:', error);
+              return;
+            }
+            try {
+              await updateSlideBackground(selectedSlideId, image.id);
+              updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+                background_image_id: image.id,
+                backgroundImage: userUrl || imageUrl
+              });
+            } catch (e) {
+              console.error('[Background Import] Failed to persist imported background:', e);
+            }
+          })();
+        }
+      } else {
+        await updateSlideBackground(selectedSlideId, imageId);
+      }
+
       console.log('Background image updated successfully');
     } catch (error) {
       console.error('Failed to update background image:', error);
@@ -1597,8 +1622,10 @@ export default function SlideshowEditor() {
 
     let finalImageId = imageId;
 
-    // If this is a product image, copy it to the images table first
-    if (isProductImage) {
+    // Optimistic path for public images: add immediately, import in background
+    const isPublic = imageUrl.includes('/public-images/');
+    if (!isPublic && isProductImage) {
+      // Otherwise, if this is a product image, copy it to the images table first
       console.log('[SlideshowEditor] Copying product image for overlay:', imageId);
       const { image, error } = await copyProductImageForOverlay(imageId);
       if (error) {
@@ -1661,6 +1688,23 @@ export default function SlideshowEditor() {
         
         // Mark as having unsaved changes
         setHasUnsavedChanges(true);
+
+        // If this was a public image, import in the background and swap the overlay image_id
+        if (isPublic) {
+          (async () => {
+            const idx2 = imageUrl.indexOf('/public-images/');
+            const storagePath2 = idx2 >= 0 ? decodeURIComponent(imageUrl.substring(idx2 + '/public-images/'.length)) : '';
+            if (!storagePath2) return;
+            const { image, error } = await importPublicImageToUserImages(storagePath2, { publicImageId: imageId });
+            if (error || !image) {
+              console.error('[Overlay Import] Failed to import public image:', error);
+              return;
+            }
+            // Update the overlay's image_id locally to the imported image id
+            const updated = (currentSlide.overlays || []).map(o => o.id === overlayId ? { ...o, image_id: image.id } : o);
+            updateLocalSlideshow(selectedSlideshowId, selectedSlideId, { overlays: updated });
+          })();
+        }
 
         img.set({
           left: newOverlay.position_x,

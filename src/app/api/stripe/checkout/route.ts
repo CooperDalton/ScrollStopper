@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { subscriptionTiers } from '@/data/subscriptionTiers'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2023-10-16',
 })
 
 export async function GET(request: NextRequest) {
@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer_email: user.email || undefined,
+    metadata: { userId: user.id },
+    subscription_data: { metadata: { userId: user.id } },
     line_items: [
       {
         price: subscriptionTiers.Pro.stripePriceId!,

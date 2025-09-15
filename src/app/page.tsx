@@ -391,6 +391,7 @@ const PricingSection = () => (
                 </div>
               </div>
 
+
               <div className="flex items-start space-x-3">
                 <div className="w-5 h-5 rounded-full bg-green-500 flex-shrink-0 flex items-center justify-center mt-0.5">
                   <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -398,8 +399,8 @@ const PricingSection = () => (
                   </svg>
                 </div>
                 <div>
-                  <p className="text-[var(--color-text)] font-medium">HD Video Export</p>
-                  <p className="text-sm text-[var(--color-text-muted)]">1080p & 4K video downloads</p>
+                  <p className="text-[var(--color-text)] font-medium">Photo Library</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">250+ Images to get you started</p>
                 </div>
               </div>
 
@@ -410,8 +411,8 @@ const PricingSection = () => (
                   </svg>
                 </div>
                 <div>
-                  <p className="text-[var(--color-text)] font-medium">Priority Support</p>
-                  <p className="text-sm text-[var(--color-text-muted)]">Email & chat support</p>
+                  <p className="text-[var(--color-text)] font-medium">HD Image Export</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">1080p image downloads</p>
                 </div>
               </div>
             </div>

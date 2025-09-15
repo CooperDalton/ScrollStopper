@@ -4,6 +4,13 @@ export type TierNames = keyof typeof subscriptionTiers
 export type PaidTierNames = Exclude<TierNames, "Free">
 
 export const subscriptionTiers = {
+  Free: {
+    name: "Free",
+    priceInCents: 0,
+    maxNumberOfSlideshows: 3,
+    maxNumberOfAIGenerations: 0,
+    stripePriceId: undefined,
+  },
   Pro: {
     name: "Pro",
     priceInCents: 1800,
@@ -14,6 +21,7 @@ export const subscriptionTiers = {
 } as const
 
 export const subscriptionTiersInOrder = [
+  subscriptionTiers.Free,
   subscriptionTiers.Pro,
 ] as const
 

@@ -394,3 +394,69 @@ export async function updateImageAIData(
     return { image: null, error: error as Error }
   }
 }
+
+// Import a public image (from the public-images bucket) into the user's images bucket
+// by downloading it from its public URL and uploading into user-images, then creating
+// a corresponding row in the images table. This avoids schema changes and preserves FKs.
+export async function importPublicImageToUserImages(
+  publicStoragePath: string,
+  opts?: { publicImageId?: string; suggestedFileName?: string }
+): Promise<{ image: Image | null; imageUrl: string | null; error: Error | null }> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const user = auth?.user
+    if (!user) {
+      throw new Error('User must be authenticated')
+    }
+
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!base) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
+
+    // Build the public URL and fetch the file
+    const publicUrl = `${base}/storage/v1/object/public/public-images/${publicStoragePath}`
+    const res = await fetch(publicUrl)
+    if (!res.ok) {
+      throw new Error(`Failed fetching public image: ${res.status} ${res.statusText}`)
+    }
+    const blob = await res.blob()
+
+    // Pick a destination path in user-images bucket
+    const origName = opts?.suggestedFileName || publicStoragePath.split('/').pop() || `imported-${Date.now()}`
+    const destPath = `${user.id}/public-imports/${Date.now()}_${origName}`
+
+    // Upload into user-images
+    const { error: uploadError } = await supabase.storage
+      .from('user-images')
+      .upload(destPath, blob, { upsert: false })
+
+    if (uploadError) throw uploadError
+
+    // Create images row pointing to the uploaded user image
+    const metadata: Record<string, unknown> = {
+      source: 'public_image',
+    }
+    if (opts?.publicImageId) metadata.original_public_image_id = opts.publicImageId
+
+    const { data: newImage, error: insertError } = await supabase
+      .from('images')
+      .insert({
+        collection_id: null,
+        user_id: user.id,
+        storage_path: destPath,
+        metadata,
+      })
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    // Build user-images proxy URL for the client
+    const encoded = encodeURIComponent(destPath)
+    const imageUrl = `/api/storage/user-images?path=${encoded}`
+
+    return { image: newImage as unknown as Image, imageUrl, error: null }
+  } catch (error) {
+    console.error('Error importing public image:', error)
+    return { image: null, imageUrl: null, error: error as Error }
+  }
+}
