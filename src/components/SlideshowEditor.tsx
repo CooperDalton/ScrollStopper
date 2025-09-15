@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { toast } from '@/lib/toast';
 import AspectRatioPicker from '@/components/editor/AspectRatioPicker';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { fabric } from 'fabric';
@@ -390,7 +391,7 @@ export default function SlideshowEditor() {
       }
     } catch (err) {
       console.error('Failed to delete draft slideshow:', err);
-      alert('Failed to delete draft. Please try again.');
+      toast.error('Failed to delete draft. Please try again.');
     } finally {
       setDeletingDraftIds(prev => {
         const copy = new Set(prev);
@@ -1263,7 +1264,7 @@ export default function SlideshowEditor() {
         setSelectedSlideId(revertedSlideshow.slides[0].id);
       }
       
-      alert('Failed to add slide. Please try again.');
+      toast.error('Failed to add slide. Please try again.');
     }
   };
 
@@ -1276,7 +1277,7 @@ export default function SlideshowEditor() {
 
     // Prevent deleting the last remaining slide
     if (currentSlideshow.slides.length === 1) {
-      alert('Cannot delete the last slide in a slideshow');
+      toast.error('Cannot delete the last slide in a slideshow');
       return;
     }
 
@@ -1343,7 +1344,7 @@ export default function SlideshowEditor() {
       // Re-select the original slide
       setSelectedSlideId(slideId);
       
-      alert('Failed to delete slide from database. The slide has been restored.');
+      toast.error('Failed to delete slide from database. The slide has been restored.');
     } finally {
       // Reset deletion flag after operation completes
       setIsDeletingSlide(false);
@@ -1371,7 +1372,7 @@ export default function SlideshowEditor() {
       updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
         duration_seconds: currentDuration
       });
-      alert('Failed to update slide duration. Please try again.');
+      toast.error('Failed to update slide duration. Please try again.');
     }
   };
 
@@ -1613,7 +1614,7 @@ export default function SlideshowEditor() {
         background_image_id: currentSlide.background_image_id,
         backgroundImage: currentSlide.backgroundImage
       });
-      alert('Failed to update background image. Please try again.');
+      toast.error('Failed to update background image. Please try again.');
     }
   };
 
@@ -1630,7 +1631,7 @@ export default function SlideshowEditor() {
       const { image, error } = await copyProductImageForOverlay(imageId);
       if (error) {
         console.error('[SlideshowEditor] Failed to copy product image:', error);
-        alert('Failed to add product image as overlay. Please try again.');
+        toast.error('Failed to add product image as overlay. Please try again.');
         return;
       }
       if (image) {
@@ -1795,7 +1796,7 @@ export default function SlideshowEditor() {
       console.log('Slide saved successfully');
     } catch (error) {
       console.error('Failed to save slide:', error);
-      alert('Failed to save slide. Please try again.');
+      toast.error('Failed to save slide. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -1820,7 +1821,7 @@ export default function SlideshowEditor() {
       handleSidebarMode('drafts');
     } catch (err) {
       console.error('Failed to create slideshow:', err);
-      alert('Failed to create slideshow. Please try again.');
+      toast.error('Failed to create slideshow. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -1988,11 +1989,11 @@ export default function SlideshowEditor() {
   const handleRender = async () => {
     const billing = await fetch('/api/billing/status').then((r) => r.json());
     if (!billing.isSubscribed) {
-      alert('A paid subscription is required to render videos.');
+      toast.error('A paid subscription is required to render videos.');
       return;
     }
     if (billing.remainingSlides <= 0) {
-      alert('You have reached your slideshow limit for this month.');
+      toast.error('You have reached your slideshow limit for this month.');
       return;
     }
     if (!currentSlideshow) return;

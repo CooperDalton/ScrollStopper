@@ -1,6 +1,7 @@
 'use client'
 
 import { SWRConfig } from 'swr'
+import { toast } from '@/lib/toast'
 
 interface SWRProviderProps {
   children: React.ReactNode
@@ -21,6 +22,10 @@ export function SWRProvider({ children }: SWRProviderProps) {
           }
           // If not JSON, throw an error rather than trying to parse as JSON
           throw new Error(`Expected JSON response but got ${contentType || 'unknown content type'}`);
+        },
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : 'Request failed';
+          toast.error(message);
         },
         revalidateOnFocus: false,
         revalidateOnReconnect: true,

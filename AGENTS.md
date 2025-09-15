@@ -12,9 +12,6 @@
 
 ## Build, Test, and Development Commands
 - `npm run dev` — start local dev server.
-- `npm run dev:turbo` — dev with Turbopack.
-- `npm run build` — production build.
-- `npm run start` — run built app.
 - `npm run lint` — lint TypeScript/React with Next’s config.
 - Ad-hoc script example: `node ./test-stroke-width.js` (no formal test runner yet).
 

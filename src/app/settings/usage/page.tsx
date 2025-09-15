@@ -1,4 +1,5 @@
 import SettingsLayout from '@/components/SettingsLayout';
+import UsageProgressBar from '@/components/UsageProgressBar';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { subscriptionTiers } from '@/data/subscriptionTiers';
 
@@ -69,37 +70,24 @@ export default async function UsagePage() {
         <div className="max-w-4xl mx-auto space-y-8">
           <div>
             <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">Usage</h1>
-            <p className="text-[var(--color-text-muted)]">
-              Plan: {isSubscribed ? 'Pro' : 'Free'} · Limits reflect your current plan.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="text-sm text-[var(--color-text-muted)]">Videos this cycle</div>
-              <div className="text-3xl font-bold text-[var(--color-text)] mt-2">{createdThisCycle}</div>
-            </div>
-
-            <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="text-sm text-[var(--color-text-muted)]">AI generated (this cycle)</div>
-              <div className="text-3xl font-bold text-[var(--color-text)] mt-2">{usedGenerations}</div>
-              <div className="text-xs text-[var(--color-text-muted)] mt-1">Remaining: {remainingAIGenerations}</div>
-            </div>
-
-            <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="text-sm text-[var(--color-text-muted)]">Total videos (all time)</div>
-              <div className="text-3xl font-bold text-[var(--color-text)] mt-2">{totalSlideshows}</div>
-            </div>
           </div>
 
           <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
-            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">Plan limits</h2>
-            <p className="text-sm text-[var(--color-text-muted)]">
-              Slideshows this cycle: {usedSlidesCounter} / {tier.maxNumberOfSlideshows} &nbsp;·&nbsp; Remaining: {remainingSlides}
-            </p>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">
-              AI generations this cycle: {usedGenerations} / {tier.maxNumberOfAIGenerations} &nbsp;·&nbsp; Remaining: {remainingAIGenerations}
-            </p>
+            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-4">Plan limits</h2>
+            <div className="space-y-4">
+              <UsageProgressBar
+                current={usedSlidesCounter}
+                max={tier.maxNumberOfSlideshows}
+                label="Slideshows this cycle"
+                remaining={remainingSlides}
+              />
+              <UsageProgressBar
+                current={usedGenerations}
+                max={tier.maxNumberOfAIGenerations}
+                label="AI generations this cycle"
+                remaining={remainingAIGenerations}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/hooks/useAuth';
 import { SWRProvider } from '@/components/SWRProvider';
+import ToastProvider from '@/components/ToastProvider';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -48,6 +49,7 @@ export default function RootLayout({
       >
         <SWRProvider>
           <AuthProvider>
+            <ToastProvider />
             {children}
           </AuthProvider>
         </SWRProvider>

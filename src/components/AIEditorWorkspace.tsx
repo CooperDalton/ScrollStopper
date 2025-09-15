@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { toast } from '@/lib/toast';
 import AISidebar from '@/components/AISidebar';
 import ImageSelectionModal from '@/components/ImageSelectionModal';
 import CollectionSelectionModal from '@/components/CollectionSelectionModal';
@@ -19,7 +20,7 @@ import type { Slideshow, Slide, SlideText, SlideOverlay } from '@/hooks/useSlide
 import { useSlideshows } from '@/hooks/useSlideshows';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { copyProductImageForOverlay } from '@/lib/images';
+import { copyProductImageForOverlay, importPublicImageToUserImages } from '@/lib/images';
 
 // Icon components for the control panel
 const BackgroundIcon = () => (
@@ -720,6 +721,27 @@ export default function AIEditorWorkspace() {
     } else {
       console.warn('[AIEditor] No canvas found for slide:', selectedSlideId);
     }
+
+    // If this is a public image, import it to user images in the background
+    const isPublic = imageUrl.includes('/public-images/');
+    if (isPublic) {
+      const idx = imageUrl.indexOf('/public-images/');
+      const storagePath = idx >= 0 ? decodeURIComponent(imageUrl.substring(idx + '/public-images/'.length)) : '';
+      if (storagePath) {
+        (async () => {
+          const { image, imageUrl: userUrl, error } = await importPublicImageToUserImages(storagePath, { publicImageId: imageId });
+          if (error || !image) {
+            console.error('[AIEditor][Background Import] Failed to import public image:', error);
+            return;
+          }
+          // Update local slide to use imported image id/url so later save uses valid images.id
+          updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+            background_image_id: image.id,
+            backgroundImage: userUrl || currentSlide.backgroundImage
+          });
+        })();
+      }
+    }
   };
 
   const handleImageOverlaySelect = async (imageUrl: string, imageId: string, isProductImage: boolean = false) => {
@@ -729,14 +751,15 @@ export default function AIEditorWorkspace() {
     }
 
     let finalImageId = imageId;
+    const isPublic = imageUrl.includes('/public-images/');
 
     // If this is a product image, copy it to the images table first
-    if (isProductImage) {
+    if (!isPublic && isProductImage) {
       console.log('[AIEditor] Copying product image for overlay:', imageId);
       const { image, error } = await copyProductImageForOverlay(imageId);
       if (error) {
         console.error('[AIEditor] Failed to copy product image:', error);
-        alert('Failed to add product image as overlay. Please try again.');
+        toast.error('Failed to add product image as overlay. Please try again.');
         return;
       }
       if (image) {
@@ -823,6 +846,22 @@ export default function AIEditorWorkspace() {
       });
     } else {
       console.warn('[AIEditor] No canvas found for slide:', selectedSlideId);
+    }
+
+    // If this was a public image, import in background and swap the overlay image_id
+    if (isPublic) {
+      (async () => {
+        const idx2 = imageUrl.indexOf('/public-images/');
+        const storagePath2 = idx2 >= 0 ? decodeURIComponent(imageUrl.substring(idx2 + '/public-images/'.length)) : '';
+        if (!storagePath2) return;
+        const { image, error } = await importPublicImageToUserImages(storagePath2, { publicImageId: imageId });
+        if (error || !image) {
+          console.error('[AIEditor][Overlay Import] Failed to import public image:', error);
+          return;
+        }
+        const updated = (currentSlide.overlays || []).map(o => o.id === overlayId ? { ...o, image_id: image.id } : o);
+        updateLocalSlideshow(selectedSlideshowId, selectedSlideId, { overlays: updated });
+      })();
     }
   };
 
@@ -1078,7 +1117,7 @@ export default function AIEditorWorkspace() {
   // Save function to persist slideshow to database
   const handleSave = async () => {
     if (!currentSlideshow || !currentSlideshow.slides || currentSlideshow.slides.length === 0) {
-      alert('No slideshow to save');
+      toast.error('No slideshow to save');
       return;
     }
 
@@ -1086,6 +1125,60 @@ export default function AIEditorWorkspace() {
     
     try {
       console.log('[AIEditor] Starting save process for slideshow:', currentSlideshow.name);
+      
+      // Preprocess slides: ensure any public images are imported and IDs point to images table
+      const slidesCopy = JSON.parse(JSON.stringify(currentSlideshow.slides || []));
+      const publicTasks: Array<Promise<void>> = [];
+      const publicMap = new Map<string, Promise<{ id: string; url?: string }>>();
+      const ensureImported = (url: string, idHint?: string) => {
+        const idx = url.indexOf('/public-images/');
+        const storagePath = idx >= 0 ? decodeURIComponent(url.substring(idx + '/public-images/'.length)) : '';
+        if (!storagePath) return undefined;
+        if (!publicMap.has(storagePath)) {
+          const p = (async () => {
+            const { image, imageUrl: userUrl, error } = await importPublicImageToUserImages(storagePath, { publicImageId: idHint });
+            if (error || !image) throw error || new Error('Failed to import public image');
+            return { id: image.id, url: userUrl || undefined };
+          })();
+          publicMap.set(storagePath, p);
+        }
+        return publicMap.get(storagePath)!;
+      };
+
+      for (const slide of slidesCopy) {
+        if (slide.backgroundImage && typeof slide.backgroundImage === 'string' && slide.backgroundImage.includes('/public-images/')) {
+          const p = ensureImported(slide.backgroundImage, slide.background_image_id);
+          if (p) {
+            publicTasks.push(
+              p.then(({ id, url }) => {
+                slide.background_image_id = id;
+                if (url) slide.backgroundImage = url;
+              })
+            );
+          }
+        }
+        if (Array.isArray(slide.overlays)) {
+          for (const o of slide.overlays) {
+            if (o.imageUrl && typeof o.imageUrl === 'string' && o.imageUrl.includes('/public-images/')) {
+              const p2 = ensureImported(o.imageUrl, o.image_id);
+              if (p2) {
+                publicTasks.push(
+                  p2.then(({ id }) => {
+                    o.image_id = id;
+                  })
+                );
+              }
+            }
+          }
+        }
+      }
+
+      if (publicTasks.length > 0) {
+        console.log(`[AIEditor] Importing ${publicTasks.length} public image(s) before save...`);
+        await Promise.all(publicTasks);
+        // After import, update local state so UI reflects final ids/urls
+        setLocalSlideshows(prev => prev.map(s => s.id === currentSlideshow.id ? { ...s, slides: slidesCopy } : s));
+      }
       
       // Create the slideshow in the database
       const savedSlideshow = await createSlideshow(
@@ -1106,7 +1199,7 @@ export default function AIEditorWorkspace() {
       }
       
       // Create all slides in the database
-      const slideInserts = currentSlideshow.slides.map((slide: any, index: number) => ({
+      const slideInserts = (slidesCopy || currentSlideshow.slides).map((slide: any, index: number) => ({
         slideshow_id: savedSlideshow.id,
         background_image_id: slide.background_image_id || null,
         duration_seconds: slide.duration_seconds || 3,
@@ -1123,13 +1216,13 @@ export default function AIEditorWorkspace() {
       console.log('[AIEditor] Created slides in database:', createdSlides?.length);
       
       // Save texts and overlays for each slide
-      for (let i = 0; i < currentSlideshow.slides.length; i++) {
-        const localSlide = currentSlideshow.slides[i];
+      for (let i = 0; i < (slidesCopy || currentSlideshow.slides).length; i++) {
+        const localSlide = (slidesCopy || currentSlideshow.slides)[i];
         const dbSlide = createdSlides?.[i];
         
         if (!dbSlide) continue;
         
-        console.log(`[AIEditor] Saving slide ${i + 1}/${currentSlideshow.slides.length} - texts: ${localSlide.texts?.length || 0}, overlays: ${localSlide.overlays?.length || 0}`);
+        console.log(`[AIEditor] Saving slide ${i + 1}/${(slidesCopy || currentSlideshow.slides).length} - texts: ${localSlide.texts?.length || 0}, overlays: ${localSlide.overlays?.length || 0}`);
         
         // Save texts
         if (localSlide.texts && localSlide.texts.length > 0) {
@@ -1157,7 +1250,7 @@ export default function AIEditorWorkspace() {
       
     } catch (error) {
       console.error('[AIEditor] Error saving slideshow:', error);
-      alert('Failed to save slideshow. Please try again.');
+      toast.error('Failed to save slideshow. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -1212,14 +1305,14 @@ export default function AIEditorWorkspace() {
     try {
       data = JSON.parse(jsonString) as JSONSlideshow;
     } catch {
-      alert('Invalid JSON');
+      toast.error('Invalid JSON');
       return;
     }
     const rawSlides: any[] = Array.isArray((data as any).slides)
       ? ((data as any).slides as any[])
       : ((data as any).slides ? [((data as any).slides as any)] : []);
     if (!data || rawSlides.length === 0) {
-      alert('JSON must contain slides');
+      toast.error('JSON must contain slides');
       return;
     }
 
@@ -1374,13 +1467,13 @@ export default function AIEditorWorkspace() {
             let finalJson = '';
             const billing = await fetch('/api/billing/status').then((r) => r.json());
             if (!billing.isSubscribed) {
-              alert('A paid subscription is required to generate slideshows.');
+              toast.error('A paid subscription is required to generate slideshows.');
               setIsGenerating(false);
               setGenerationCompleted(true);
               return;
             }
             if (billing.remainingAIGenerations <= 0) {
-              alert('You have reached your AI generation limit for this month.');
+              toast.error('You have reached your AI generation limit for this month.');
               setIsGenerating(false);
               setGenerationCompleted(true);
               return;
@@ -1397,7 +1490,7 @@ export default function AIEditorWorkspace() {
                 try {
                   const errorData = await res.json();
                   if (errorData.error) {
-                    alert(errorData.error);
+                    toast.error(errorData.error);
                     setIsGenerating(false);
                     return;
                   }
@@ -1665,4 +1758,3 @@ export default function AIEditorWorkspace() {
     </div>
   );
 }
-
