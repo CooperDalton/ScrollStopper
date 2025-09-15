@@ -116,22 +116,36 @@ export async function deleteCollection(id: string) {
       throw new Error('User must be authenticated')
     }
 
-    // First delete all images in the collection from storage
+    // Fetch images in the collection
     const { data: images } = await supabase
       .from('images')
       .select('*')
       .eq('collection_id', id)
 
+    // Best-effort: delete files from storage first
     if (images && images.length > 0) {
       const filePaths = images
         .map(img => (img as any).storage_path || (img as any).file_path)
         .filter(Boolean) as string[]
-      await supabase.storage
-        .from('user-images')
-        .remove(filePaths)
+      if (filePaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from('user-images')
+          .remove(filePaths)
+        // Do not block DB deletes on storage errors; log and continue
+        if (storageError) {
+          console.warn('Storage remove error during collection delete:', storageError)
+        }
+      }
+      // Remove image rows explicitly to avoid FK restrictions if cascade is not configured
+      const { error: imagesDeleteError } = await supabase
+        .from('images')
+        .delete()
+        .eq('collection_id', id)
+        .eq('user_id', user.id)
+      if (imagesDeleteError) throw imagesDeleteError
     }
 
-    // Delete the collection (cascade will delete images records)
+    // Delete the collection itself
     const { error } = await supabase
       .from('image_collections')
       .delete()
