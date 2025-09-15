@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
         quantity: 1,
       },
     ],
-    success_url: `${origin}/editor`,
+    // On success, bounce through a confirm endpoint that updates the user's role
+    // before landing in the app. This complements webhooks and fixes cases where
+    // webhooks are misconfigured or delayed.
+    success_url: `${origin}/api/stripe/confirm?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/`,
   })
 

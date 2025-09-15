@@ -69,9 +69,11 @@ const Header = () => {
         <div className="flex justify-between items-center py-4">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <SparklesIcon />
-            </div>
+            <img
+              src="/Logos/LogoWBackground.png"
+              alt="ScrollStopper Logo"
+              className="w-8 h-8 object-contain rounded-lg"
+            />
             <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
           </Link>
 
@@ -197,10 +199,10 @@ const HeroSection = () => (
 
           {/* CTA Button */}
           <div className="flex items-center space-x-4">
-            <button className="btn-gradient text-lg px-8 py-4 flex items-center space-x-2 animate-glow">
+            <Link href="/ai-editor" className="btn-gradient text-lg px-8 py-4 flex items-center space-x-2 animate-glow">
               <span>TRY NOW</span>
               <SparklesIcon />
-            </button>
+            </Link>
             <button className="btn-outline text-lg px-8 py-4 flex items-center space-x-2">
               <PlayIcon />
               <span>Watch Demo</span>
@@ -311,18 +313,7 @@ const FeaturesSection = () => (
           </div>
         ))}
       </div>
-
-      {/* Additional Features Highlight */}
-      <div className="mt-16 text-center">
-        <div className="bg-gradient-light rounded-3xl p-8 max-w-3xl mx-auto border border-[var(--color-primary)]/20">
-          <h3 className="text-2xl font-bold text-[var(--color-text)] mb-4">
-            More features on the way! 🚀
-          </h3>
-          <p className="text-[var(--color-text-muted)]">
-            We're constantly adding new features based on user feedback. Join our community to help shape the future of ScrollStopper.
-          </p>
-        </div>
-      </div>
+    
     </div>
   </section>
 );
@@ -435,9 +426,11 @@ const Footer = () => (
       <div className="grid md:grid-cols-4 gap-8">
         <div className="md:col-span-2">
           <div className="flex items-center space-x-2 mb-4">
-            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <SparklesIcon />
-            </div>
+            <img
+              src="/Logos/LogoWBackground.png"
+              alt="ScrollStopper Logo"
+              className="w-8 h-8 object-contain rounded-lg"
+            />
             <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
           </div>
           <p className="text-[var(--color-text-muted)] mb-6 max-w-md">

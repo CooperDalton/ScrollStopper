@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 // Icon components
 const ProductsIcon = () => (
@@ -60,12 +60,33 @@ const navigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/billing/status', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted) setIsSubscribed(Boolean(data?.isSubscribed));
+      } catch {}
+    };
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="flex h-screen w-64 flex-col bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)]">
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 px-6 py-6 border-b border-[var(--color-border)]">
-        <div className="w-8 h-8 bg-gradient-primary rounded-lg"></div>
+        <img
+          src="/Logos/LogoWBackground.png"
+          alt="ScrollStopper Logo"
+          className="w-8 h-8 object-contain rounded-lg"
+        />
         <span className="text-xl font-bold text-[var(--color-text)]">ScrollStopper</span>
       </Link>
 
@@ -95,6 +116,16 @@ export default function Sidebar() {
 
       {/* Bottom Section */}
       <div className="border-t border-[var(--color-border)] p-4 space-y-3">
+        {/* Settings Button */}
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-tertiary)]"
+          aria-label="Open Settings"
+        >
+          <SettingsIcon />
+          Settings
+        </Link>
+
         {/* Account Info */}
         <div className="bg-[var(--color-bg-tertiary)] rounded-xl p-4">
           <div className="flex items-center gap-3 mb-3">
@@ -115,7 +146,7 @@ export default function Sidebar() {
                   {user?.user_metadata?.full_name || user?.email || 'Guest'}
                 </div>
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-600 text-white flex-shrink-0">
-                  Pro
+                  {isSubscribed ? 'Pro' : 'Free'}
                 </span>
               </div>
               <div className="text-xs text-[var(--color-text-muted)]">
@@ -124,7 +155,6 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

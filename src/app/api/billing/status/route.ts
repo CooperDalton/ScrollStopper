@@ -14,11 +14,15 @@ export async function GET() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('role')
+    .select('role, stripe_subscription_status')
     .eq('id', user.id)
     .single()
 
-  const tier = profile?.role === 'pro' ? subscriptionTiers.Pro : subscriptionTiers.Free
+  const isSubscribed =
+    profile?.role === 'pro' ||
+    (profile?.stripe_subscription_status === 'active' || profile?.stripe_subscription_status === 'trialing')
+
+  const tier = isSubscribed ? subscriptionTiers.Pro : subscriptionTiers.Free
 
   const now = new Date()
   const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -35,7 +39,7 @@ export async function GET() {
   const usedGenerations = rows?.find((r) => r.metric === 'ai_generations')?.used ?? 0
 
   return NextResponse.json({
-    isSubscribed: profile?.role === 'pro',
+    isSubscribed,
     remainingSlides: Math.max(0, tier.maxNumberOfSlideshows - usedSlides),
     remainingAIGenerations: Math.max(0, tier.maxNumberOfAIGenerations - usedGenerations),
   })

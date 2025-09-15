@@ -25,8 +25,8 @@ CREATE TABLE public.images (
   height integer,
   aspect_ratio text CHECK (aspect_ratio ~ '^[0-9]+:[0-9]+$'::text),
   CONSTRAINT images_pkey PRIMARY KEY (id),
-  CONSTRAINT images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT images_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.image_collections(id)
+  CONSTRAINT images_collection_id_fkey FOREIGN KEY (collection_id) REFERENCES public.image_collections(id),
+  CONSTRAINT images_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.product_images (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -113,8 +113,8 @@ CREATE TABLE public.slide_overlays (
   size integer,
   created_at timestamp without time zone DEFAULT now(),
   CONSTRAINT slide_overlays_pkey PRIMARY KEY (id),
-  CONSTRAINT slide_overlays_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.images(id),
-  CONSTRAINT slide_overlays_slide_id_fkey FOREIGN KEY (slide_id) REFERENCES public.slides(id)
+  CONSTRAINT slide_overlays_slide_id_fkey FOREIGN KEY (slide_id) REFERENCES public.slides(id),
+  CONSTRAINT slide_overlays_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.images(id)
 );
 CREATE TABLE public.slide_texts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -137,8 +137,8 @@ CREATE TABLE public.slides (
   created_at timestamp without time zone DEFAULT now(),
   index smallint NOT NULL,
   CONSTRAINT slides_pkey PRIMARY KEY (id),
-  CONSTRAINT slides_background_image_id_fkey FOREIGN KEY (background_image_id) REFERENCES public.images(id),
-  CONSTRAINT slides_slideshow_id_fkey FOREIGN KEY (slideshow_id) REFERENCES public.slideshows(id)
+  CONSTRAINT slides_slideshow_id_fkey FOREIGN KEY (slideshow_id) REFERENCES public.slideshows(id),
+  CONSTRAINT slides_background_image_id_fkey FOREIGN KEY (background_image_id) REFERENCES public.images(id)
 );
 CREATE TABLE public.slideshows (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -164,7 +164,7 @@ CREATE TABLE public.usage_counters (
   used bigint NOT NULL DEFAULT 0,
   hard_limit bigint,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT usage_counters_pkey PRIMARY KEY (user_id, metric, period_start),
+  CONSTRAINT usage_counters_pkey PRIMARY KEY (period_start, user_id, metric),
   CONSTRAINT usage_counters_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.users (

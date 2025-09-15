@@ -90,7 +90,7 @@ export const getTextStyling = (fontSize: number = 24) => ({
   originY: 'center' as const,
   stroke: 'black',
   strokeWidth: getStrokeWidthForFontSize(fontSize),
-  charSpacing: -60,
+  charSpacing: -40,
   lineHeight: 0.8,
   fontSize,
 })

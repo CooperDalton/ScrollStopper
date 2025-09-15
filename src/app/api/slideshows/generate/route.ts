@@ -50,7 +50,7 @@ const createSlideshowSchema = (collectionRefs: string[], productRefs: string[], 
 export async function POST(req: NextRequest) {
   try {
     console.log('[slideshow-generate] Starting generation request')
-    const { productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio } = await req.json()
+    const { productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio } = await req.json()
     if (!productId || typeof productId !== 'string') {
       console.log('[slideshow-generate] Missing productId')
       return new Response(JSON.stringify({ error: 'Missing productId' }), { 
@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
       })
     }
     
-    // Validate that at least one collection is selected
-    if (!Array.isArray(selectedCollectionIds) || selectedCollectionIds.length === 0) {
+    // Validate that at least one collection is selected (user or public)
+    if ((!Array.isArray(selectedCollectionIds) || selectedCollectionIds.length === 0) && (!Array.isArray(selectedPublicCollectionIds) || selectedPublicCollectionIds.length === 0)) {
       console.log('[slideshow-generate] No collections selected')
       return new Response(JSON.stringify({ 
         error: 'Please select at least one collection to generate a slideshow. Collection images are required for slide backgrounds.' 
@@ -104,31 +104,42 @@ export async function POST(req: NextRequest) {
 
     // Include images from selected collections, if provided (via join through images table)
     let extraCollectionImages: any[] = []
-    if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
+    if ((Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) || (Array.isArray(selectedPublicCollectionIds) && selectedPublicCollectionIds.length > 0)) {
       console.log('[slideshow-generate] Fetching images from selected collections:', selectedCollectionIds)
       console.log('[slideshow-generate] User ID:', user.id)
-      
-      // First, check if the collections exist and belong to the user
-      const { data: collectionsCheck } = await supabase
-        .from('image_collections')
-        .select('id, name, user_id')
-        .in('id', selectedCollectionIds)
-        .eq('user_id', user.id)
-      console.log('[slideshow-generate] Collections found:', collectionsCheck?.length || 0, collectionsCheck)
-      
-      const extraQuery = supabase
-        .from('images')
-        .select('id, metadata, collection_id, storage_path, user_id')
-        .in('collection_id', selectedCollectionIds)
-        .eq('user_id', user.id)
-      const { data: extraData, error: queryError } = await extraQuery
-      
-      if (queryError) {
-        console.error('[slideshow-generate] Query error:', queryError)
+      // User collections (owned images)
+      let userImages: any[] = []
+      if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
+        const { data: collectionsCheck } = await supabase
+          .from('image_collections')
+          .select('id, name, user_id')
+          .in('id', selectedCollectionIds)
+          .eq('user_id', user.id)
+        console.log('[slideshow-generate] Collections found:', collectionsCheck?.length || 0, collectionsCheck)
+
+        const extraQuery = supabase
+          .from('images')
+          .select('id, metadata, collection_id, storage_path, user_id')
+          .in('collection_id', selectedCollectionIds)
+          .eq('user_id', user.id)
+        const { data: extraData, error: queryError } = await extraQuery
+        if (queryError) console.error('[slideshow-generate] Query error:', queryError)
+        userImages = extraData || []
       }
-      console.log('[slideshow-generate] Raw query result:', extraData?.length || 0, 'images')
-      
-      extraCollectionImages = extraData || []
+
+      // Public collections
+      let publicImages: any[] = []
+      if (Array.isArray(selectedPublicCollectionIds) && selectedPublicCollectionIds.length > 0) {
+        const { data: pubData, error: pubErr } = await supabase
+          .from('public_images')
+          .select('id, metadata, collection_id, storage_path')
+          .in('collection_id', selectedPublicCollectionIds)
+        if (pubErr) console.error('[slideshow-generate] Public query error:', pubErr)
+        publicImages = pubData || []
+      }
+
+      // Merge (we will import public later on mapping if necessary)
+      extraCollectionImages = [...userImages, ...publicImages]
       // Optional filtering by explicitly selectedImageIds
       if (Array.isArray(selectedImageIds) && selectedImageIds.length > 0) {
         const selectedSet = new Set<string>(selectedImageIds)
@@ -761,14 +772,17 @@ Return ONLY the JSON object. No explanations, no markdown.`
               
               // Use the data we already fetched - no need to query again!
               const uuidToUrl = new Map<string, string>()
-              const toUrl = (p?: string | null) => (p ? `/api/storage/user-images?path=${encodeURIComponent(p)}` : '')
+              const toUserUrl = (p?: string | null) => (p ? `/api/storage/user-images?path=${encodeURIComponent(p)}` : '')
+              const toPublicUrl = (p?: string | null) => (p ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/public-images/${p}` : '')
               
-              // Map collection images using data we already have
+              // Map collection images using data we already have (user + public)
               for (const img of extraCollectionImages) {
                 const imgId = (img as any).id as string
                 const path = (img as any).storage_path
                 if (allUUIDs.includes(imgId) && path) {
-                  const url = toUrl(path)
+                  // Heuristic: user images have user_id; public images do not
+                  const isUser = typeof (img as any).user_id === 'string'
+                  const url = isUser ? toUserUrl(path) : toPublicUrl(path)
                   if (url) {
                     uuidToUrl.set(imgId, url)
                     console.log('[slideshow-generate] Mapped collection UUID to URL:', imgId, '->', url.substring(0, 50) + '...')
@@ -781,7 +795,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
                 const imgId = (img as any).id as string
                 const path = (img as any).storage_path
                 if (allUUIDs.includes(imgId) && path) {
-                  const url = toUrl(path)
+                  const url = toUserUrl(path)
                   if (url) {
                     uuidToUrl.set(imgId, url)
                     console.log('[slideshow-generate] Mapped product UUID to URL:', imgId, '->', url.substring(0, 50) + '...')

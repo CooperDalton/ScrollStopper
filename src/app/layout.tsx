@@ -20,6 +20,10 @@ export const metadata: Metadata = {
   description: "Upload your product screenshots and let ScrollStopper generate scroll-stopping TikToks in seconds. AI-powered video generation for founders and marketers.",
   keywords: ["AI video generation", "TikTok", "Instagram", "content marketing", "social media", "automation"],
   authors: [{ name: "ScrollStopper" }],
+  icons: {
+    icon: "/Logos/Rounded150.png",
+    apple: "/Logos/Rounded150.png",
+  },
 };
 
 export const viewport = {
@@ -36,6 +40,8 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="stylesheet" href="https://use.typekit.net/ioz6eoq.css" />
+        <link rel="icon" href="/Logos/Rounded150.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/Logos/Rounded150.png" />
       </head>
       <body
         className={`${inter.variable} ${geistMono.variable} antialiased`}

@@ -177,7 +177,8 @@ export default function AIEditorWorkspace() {
   const [isSelectImagesOpen, setIsSelectImagesOpen] = React.useState<boolean>(false);
   const [selectedImageIds, setSelectedImageIds] = React.useState<string[]>([]);
   const [isSelectCollectionsOpen, setIsSelectCollectionsOpen] = React.useState<boolean>(false);
-  const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]);
+  const [selectedCollectionIds, setSelectedCollectionIds] = React.useState<string[]>([]); // user collections
+  const [selectedPublicCollectionIds, setSelectedPublicCollectionIds] = React.useState<string[]>([]);
   const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
   const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
   const [generationCompleted, setGenerationCompleted] = React.useState<boolean>(false);
@@ -185,11 +186,10 @@ export default function AIEditorWorkspace() {
   // Load saved collection IDs from localStorage on mount (same pattern as AISidebar)
   React.useEffect(() => {
     try {
-      const savedCollectionIds = localStorage.getItem('aiEditorSelectedCollectionIds');
-      if (savedCollectionIds) {
-        const ids = JSON.parse(savedCollectionIds) as string[];
-        setSelectedCollectionIds(ids);
-      }
+      const savedUser = localStorage.getItem('aiEditorSelectedUserCollectionIds');
+      if (savedUser) setSelectedCollectionIds(JSON.parse(savedUser) as string[]);
+      const savedPublic = localStorage.getItem('aiEditorSelectedPublicCollectionIds');
+      if (savedPublic) setSelectedPublicCollectionIds(JSON.parse(savedPublic) as string[]);
     } catch (_) {
       // Ignore localStorage errors
     }
@@ -1361,6 +1361,13 @@ export default function AIEditorWorkspace() {
         onAddRow={handleAddRow}
         onRunGenerate={async ({ productId, prompt }) => {
           try {
+            // Save the prompt that will be used for generation
+            try {
+              localStorage.setItem('aiEditorLastUsedPrompt', prompt);
+            } catch (error) {
+              console.warn('[AIEditor] Failed to save last used prompt:', error);
+            }
+
             setAiThoughts('');
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
@@ -1383,7 +1390,7 @@ export default function AIEditorWorkspace() {
               const res = await fetch('/api/slideshows/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, aspectRatio: selectedAspectRatio }),
+                body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio: selectedAspectRatio }),
               });
               if (!res.ok) {
                 // Try to parse JSON error response
@@ -1420,6 +1427,14 @@ export default function AIEditorWorkspace() {
                   if (finalJson) {
                     handleGenerateFromJson(finalJson);
                   }
+                  // Increment AI generation usage counter (best-effort)
+                  try {
+                    await fetch('/api/usage/increment', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ metric: 'ai_generations', amount: 1 }),
+                    });
+                  } catch {}
                   break;
                 }
                 const chunkText = decoder.decode(value, { stream: true });
@@ -1468,6 +1483,7 @@ export default function AIEditorWorkspace() {
         aspectRatio={selectedAspectRatio}
         onAspectRatioChange={setSelectedAspectRatio}
         selectedCollectionIds={selectedCollectionIds}
+        selectedPublicCollectionIds={selectedPublicCollectionIds}
       />
       <div className="flex-1 flex flex-col overflow-hidden relative">
         
@@ -1530,6 +1546,7 @@ export default function AIEditorWorkspace() {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full h-full max-h-[900px] relative overflow-hidden border border-[var(--color-border)] rounded-xl">
             
+            
             {/* AI Thoughts Floating Text Box - hidden when generation is completed */}
             {!generationCompleted && (
               <div className="absolute bottom-4 left-4 z-30 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
@@ -1542,6 +1559,7 @@ export default function AIEditorWorkspace() {
                 </div>
               </div>
             )}
+            
             
             {/* Loading Overlay */}
             {isGenerating && (
@@ -1610,8 +1628,14 @@ export default function AIEditorWorkspace() {
       <CollectionSelectionModal
         isOpen={isSelectCollectionsOpen}
         onClose={() => setIsSelectCollectionsOpen(false)}
-        onSelect={(ids) => {
-          setSelectedCollectionIds(ids)
+        onSelect={({ userCollectionIds, publicCollectionIds }) => {
+          // Persist both types locally; backend currently expects user collections only,
+          // so we store user IDs in selectedCollectionIds and keep public separately for future use.
+          setSelectedCollectionIds(userCollectionIds)
+          try {
+            localStorage.setItem('aiEditorSelectedUserCollectionIds', JSON.stringify(userCollectionIds))
+            localStorage.setItem('aiEditorSelectedPublicCollectionIds', JSON.stringify(publicCollectionIds))
+          } catch {}
           setIsSelectCollectionsOpen(false)
         }}
         title="Select Collections for AI Generation"
@@ -1641,5 +1665,4 @@ export default function AIEditorWorkspace() {
     </div>
   );
 }
-
 

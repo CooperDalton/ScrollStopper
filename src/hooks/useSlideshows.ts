@@ -1259,6 +1259,15 @@ export function useSlideshows() {
           s.id === slideshowId ? { ...s, status: 'completed', frame_paths: framePaths } : s
         )
       )
+
+      // Increment slideshow render usage counter (best-effort; ignore failures)
+      try {
+        await fetch('/api/usage/increment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metric: 'slideshows', amount: 1 }),
+        })
+      } catch {}
     } catch (err) {
       console.error('Error rendering slideshow:', err)
       // Rollback status
