@@ -135,7 +135,7 @@ export default function AISidebar({
             <div className="mt-2 space-y-1">
               <div className="text-xs font-medium text-[var(--color-text-muted)]">Selected Collections:</div>
               <div className="max-h-32 overflow-y-auto space-y-1">
-                {selectedCollectionIds.map((collectionId) => {
+                {selectedCollectionIds?.map((collectionId) => {
                   const collection = collections.find(c => c.id === collectionId);
                   return (
                     <div key={collectionId} className="text-xs text-[var(--color-text)] bg-[var(--color-bg-tertiary)] px-2 py-1 rounded-md">

@@ -51,9 +51,9 @@ const UserIcon = () => (
 
 const navigation = [
   { name: 'Products', href: '/products', icon: ProductsIcon },
+  { name: 'Images', href: '/images', icon: ImagesIcon },
   { name: 'Editor', href: '/editor', icon: EditorIcon },
   { name: 'AI Editor', href: '/ai-editor', icon: AIEditorIcon },
-  { name: 'Images', href: '/images', icon: ImagesIcon },
   { name: 'Scheduler', href: '/scheduler', icon: SchedulerIcon },
 ];
 

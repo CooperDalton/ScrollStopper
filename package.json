@@ -23,6 +23,7 @@
     "next": "^15.3.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.0",
     "readable-stream": "^4.7.0",
     "stripe": "^14.25.0",
     "swr": "^2.3.4",

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { createServiceSupabaseClient } from '@/lib/supabase-service';
 import { subscriptionTiers } from '@/data/subscriptionTiers';
+import Stripe from 'stripe';
 
 export const runtime = 'nodejs';
 
@@ -11,11 +12,40 @@ const bodySchema = z.object({
   amount: z.number().int().min(1).optional().default(1),
 });
 
-function getPeriodBounds(today = new Date()) {
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-  const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const toDate = (d: Date) => d.toISOString().slice(0, 10);
-  return { period_start: toDate(start), period_end: toDate(end) };
+function toISODate(d: Date | number) {
+  const date = typeof d === 'number' ? new Date(d) : d;
+  return date.toISOString().slice(0, 10);
+}
+
+async function getSubscriptionPeriod(service: ReturnType<typeof createServiceSupabaseClient>, userId: string) {
+  // Try to base period on Stripe subscription if present
+  const { data: profile } = await service
+    .from('users')
+    .select('stripe_customer_id')
+    .eq('id', userId)
+    .single();
+
+  const customerId = profile?.stripe_customer_id as string | undefined;
+  if (!customerId || !process.env.STRIPE_SECRET_KEY) {
+    return null;
+  }
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+  // Prefer active subscription; fallback to trialing
+  const tryStatuses: Stripe.Subscription.Status[] = ['active', 'trialing'];
+  for (const status of tryStatuses) {
+    const list = await stripe.subscriptions.list({ customer: customerId, status, limit: 1 });
+    const sub = list.data[0];
+    if (sub) {
+      return {
+        period_start: toISODate(sub.current_period_start * 1000),
+        period_end: toISODate(sub.current_period_end * 1000),
+      };
+    }
+  }
+
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -43,7 +73,16 @@ export async function POST(req: NextRequest) {
       profile?.stripe_subscription_status === 'trialing';
 
     const tier = isSubscribed ? subscriptionTiers.Pro : subscriptionTiers.Free;
-    const { period_start, period_end } = getPeriodBounds();
+    // Compute period bounds: prefer Stripe subscription cycle; else calendar month
+    let periodBounds = await getSubscriptionPeriod(service, user.id);
+    if (!periodBounds) {
+      const today = new Date();
+      periodBounds = {
+        period_start: toISODate(new Date(today.getFullYear(), today.getMonth(), 1)),
+        period_end: toISODate(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+      };
+    }
+    const { period_start, period_end } = periodBounds;
 
     // Fetch existing
     const { data: existing } = await service
@@ -93,4 +132,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err?.message || 'Bad request' }, { status: 400 });
   }
 }
-

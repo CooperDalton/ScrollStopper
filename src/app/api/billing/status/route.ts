@@ -24,16 +24,14 @@ export async function GET() {
 
   const tier = isSubscribed ? subscriptionTiers.Pro : subscriptionTiers.Free
 
-  const now = new Date()
-  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
 
   const { data: rows } = await supabase
     .from('usage_counters')
-    .select('metric, used')
+    .select('metric, used, period_start, period_end')
     .eq('user_id', user.id)
-    .eq('period_start', periodStart)
+    .lte('period_start', today)
+    .gte('period_end', today)
 
   const usedSlides = rows?.find((r) => r.metric === 'slideshows')?.used ?? 0
   const usedGenerations = rows?.find((r) => r.metric === 'ai_generations')?.used ?? 0
