@@ -40,6 +40,7 @@ const TextIcon = () => (
   </svg>
 );
 
+
 const ImageIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 22H4a2 2 0 0 1-2-2V6"/>
@@ -84,6 +85,16 @@ interface JSONSlideshow {
 }
 
 export default function AIEditorWorkspace() {
+  // Preload TikTok Sans so Fabric uses it immediately on canvas
+  React.useEffect(() => {
+    try {
+      const anyDoc: any = document;
+      if (anyDoc?.fonts?.load) {
+        anyDoc.fonts.load('600 24px "TikTok Sans"');
+        anyDoc.fonts.load('600 48px "TikTok Sans"');
+      }
+    } catch {}
+  }, []);
   // Local draft persistence key
   const DRAFT_KEY = 'aiEditorGeneratedSlideshowDraft';
   // Hooks for saving to database
@@ -1399,7 +1410,7 @@ export default function AIEditorWorkspace() {
           position_y: t.position_y,
           size: t.size,
           rotation: 0,
-          font: '"proxima-nova", sans-serif',
+          font: TEXT_STYLING.fontFamily,
           created_at: createdAt
         })),
         overlays: (Array.isArray(slide.overlays) ? slide.overlays : (slide.overlays ? [slide.overlays] : [])).map((o: any, oIdx: number) => ({

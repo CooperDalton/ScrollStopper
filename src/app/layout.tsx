@@ -40,6 +40,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=TikTok+Sans:opsz,wdth,wght@12..36,106.9,300..900&display=swap"
+          rel="stylesheet"
+        />
         <link rel="stylesheet" href="https://use.typekit.net/ioz6eoq.css" />
         <link rel="icon" href="/Logos/Rounded150.png" type="image/png" />
         <link rel="apple-touch-icon" href="/Logos/Rounded150.png" />

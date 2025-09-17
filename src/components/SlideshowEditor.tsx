@@ -35,7 +35,7 @@ const PlayIcon = () => (
   </svg>
 );
 
-const SaveIcon = () => (
+  const SaveIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
   </svg>
@@ -64,6 +64,7 @@ const TextIcon = () => (
   </svg>
 );
 
+
 const ImageIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 22H4a2 2 0 0 1-2-2V6"/>
@@ -74,6 +75,16 @@ const ImageIcon = () => (
 );
 
 export default function SlideshowEditor() {
+  // Preload TikTok Sans so Fabric uses it immediately on canvas
+  useEffect(() => {
+    try {
+      const anyDoc: any = document;
+      if (anyDoc?.fonts?.load) {
+        anyDoc.fonts.load('600 24px "TikTok Sans"');
+        anyDoc.fonts.load('600 48px "TikTok Sans"');
+      }
+    } catch {}
+  }, []);
   const {
     slideshows,
     loading,
@@ -1389,7 +1400,7 @@ export default function SlideshowEditor() {
       position_y: CANVAS_HEIGHT / 2,
       size: 24,
       rotation: 0,
-      font: '"proxima-nova", sans-serif',
+      font: TEXT_STYLING.fontFamily,
       created_at: new Date().toISOString()
     };
 
