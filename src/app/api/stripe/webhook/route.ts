@@ -45,13 +45,16 @@ export async function POST(request: NextRequest) {
         if (userId) {
           await supabase
             .from('users')
-            .update({
-              role: 'pro',
-              stripe_customer_id: session.customer as string | null,
-              stripe_subscription_status: 'active',
-              stripe_price_id: priceId,
-            })
-            .eq('id', userId)
+            .upsert(
+              {
+                id: userId,
+                role: 'pro',
+                stripe_customer_id: session.customer as string | null,
+                stripe_subscription_status: 'active',
+                stripe_price_id: priceId,
+              },
+              { onConflict: 'id' }
+            )
         }
         break
       }
@@ -67,14 +70,17 @@ export async function POST(request: NextRequest) {
           const role = status === 'active' || status === 'trialing' ? 'pro' : 'free'
           await supabase
             .from('users')
-            .update({
-              role,
-              stripe_customer_id: sub.customer as string | null,
-              stripe_subscription_status: status,
-              stripe_price_id: priceId,
-              current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-            })
-            .eq('id', userId)
+            .upsert(
+              {
+                id: userId,
+                role,
+                stripe_customer_id: sub.customer as string | null,
+                stripe_subscription_status: status,
+                stripe_price_id: priceId,
+                current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+              },
+              { onConflict: 'id' }
+            )
         }
         break
       }
@@ -84,12 +90,15 @@ export async function POST(request: NextRequest) {
         if (userId) {
           await supabase
             .from('users')
-            .update({
-              role: 'free',
-              stripe_subscription_status: 'canceled',
-              current_period_end: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
-            })
-            .eq('id', userId)
+            .upsert(
+              {
+                id: userId,
+                role: 'free',
+                stripe_subscription_status: 'canceled',
+                current_period_end: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+              },
+              { onConflict: 'id' }
+            )
         }
         break
       }
@@ -103,5 +112,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }
-
 

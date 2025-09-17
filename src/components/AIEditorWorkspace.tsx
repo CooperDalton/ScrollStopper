@@ -84,6 +84,8 @@ interface JSONSlideshow {
 }
 
 export default function AIEditorWorkspace() {
+  // Local draft persistence key
+  const DRAFT_KEY = 'aiEditorGeneratedSlideshowDraft';
   // Hooks for saving to database
   const { 
     createSlideshow, 
@@ -169,11 +171,11 @@ export default function AIEditorWorkspace() {
   const initializingMiniCanvasesRef = React.useRef<Set<string>>(new Set());
   const scrollContainerRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const verticalScrollRef = React.useRef<HTMLDivElement>(null);
-  const aiThoughtsRef = React.useRef<HTMLDivElement>(null);
+  // const aiThoughtsRef = React.useRef<HTMLDivElement>(null);
   // Thumbnail store for unselected slides
   const [thumbnails, setThumbnails] = React.useState<Record<string, string>>({});
   const [verticalPad, setVerticalPad] = React.useState<number>(0);
-  const [aiThoughts, setAiThoughts] = React.useState<string>('');
+  // const [aiThoughts, setAiThoughts] = React.useState<string>('');
   const [slideshowJson, setSlideshowJson] = React.useState<string>('');
   const [isSelectImagesOpen, setIsSelectImagesOpen] = React.useState<boolean>(false);
   const [selectedImageIds, setSelectedImageIds] = React.useState<string[]>([]);
@@ -183,6 +185,32 @@ export default function AIEditorWorkspace() {
   const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
   const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
   const [generationCompleted, setGenerationCompleted] = React.useState<boolean>(false);
+
+  // Load any persisted AI-generated slideshow draft on mount
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft || !draft.slides || !Array.isArray(draft.slides) || draft.slides.length === 0) return;
+
+      setLocalSlideshows([draft]);
+      setSelectedSlideshowId(draft.id);
+      setSelectedSlideId(draft.slides[0].id);
+      setIsEditorCleared(false);
+      setIsGenerating(false);
+      setGenerationCompleted(true); // Hide AI thoughts for restored drafts
+      ensureThumbnailsForSlides(draft.slides.map((s: any) => s.id));
+      // After restoring, center on first slide once DOM paints
+      setTimeout(() => {
+        try { centerSlide(draft.slides[0].id, 80, { fastVertical: true, fastHorizontal: true }); } catch {}
+      }, 0);
+    } catch (e) {
+      // If parsing fails, clear the bad draft
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      console.warn('[AIEditor] Failed to load persisted draft:', e);
+    }
+  }, []);
 
   // Load saved collection IDs from localStorage on mount (same pattern as AISidebar)
   React.useEffect(() => {
@@ -233,15 +261,15 @@ export default function AIEditorWorkspace() {
   }, [CANVAS_WIDTH, CANVAS_HEIGHT]);
 
   // Auto-scroll AI thoughts to bottom when new content is added
-  React.useEffect(() => {
-    const aiThoughtsDiv = aiThoughtsRef.current;
-    if (aiThoughtsDiv && aiThoughts) {
-      // Use requestAnimationFrame to ensure DOM has updated before scrolling
-      requestAnimationFrame(() => {
-        aiThoughtsDiv.scrollTop = aiThoughtsDiv.scrollHeight;
-      });
-    }
-  }, [aiThoughts]);
+  // React.useEffect(() => {
+  //   const aiThoughtsDiv = aiThoughtsRef.current;
+  //   if (aiThoughtsDiv && aiThoughts) {
+  //     // Use requestAnimationFrame to ensure DOM has updated before scrolling
+  //     requestAnimationFrame(() => {
+  //       aiThoughtsDiv.scrollTop = aiThoughtsDiv.scrollHeight;
+  //     });
+  //   }
+  // }, [aiThoughts]);
 
   // Observe vertical container size to compute top/bottom padding that enables perfect centering
   React.useEffect(() => {
@@ -301,6 +329,28 @@ export default function AIEditorWorkspace() {
       }
     }, delay);
   };
+  
+  // Recenter on first slide when returning to this tab or regaining focus
+  React.useEffect(() => {
+    const handleVisible = () => {
+      const slides = currentSlideshow?.slides || [];
+      if (slides.length === 0) return;
+      const firstId = slides[0].id;
+      setSelectedSlideId(firstId);
+      centerSlide(firstId, 80, { fastVertical: true, fastHorizontal: true });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleVisible();
+    };
+
+    window.addEventListener('focus', handleVisible);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', handleVisible);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [currentSlideshow]);
 
   const disposeCanvas = (slideId: string) => {
     const c = canvasRefs.current[slideId];
@@ -510,6 +560,14 @@ export default function AIEditorWorkspace() {
     });
     setLocalSlideshows(updatedSlideshows);
     setHasUnsavedChanges(true);
+
+    // Persist the updated AI draft to localStorage
+    try {
+      const draft = updatedSlideshows.find((s: any) => s.id === slideshowId);
+      if (draft && draft.slides && draft.slides.length > 0) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      }
+    } catch {}
   };
 
   // Direct mutation approach (same as main editor)
@@ -859,7 +917,7 @@ export default function AIEditorWorkspace() {
           console.error('[AIEditor][Overlay Import] Failed to import public image:', error);
           return;
         }
-        const updated = (currentSlide.overlays || []).map(o => o.id === overlayId ? { ...o, image_id: image.id } : o);
+        const updated = (currentSlide.overlays || []).map((o: SlideOverlay) => o.id === overlayId ? { ...o, image_id: image.id } : o);
         updateLocalSlideshow(selectedSlideshowId, selectedSlideId, { overlays: updated });
       })();
     }
@@ -1244,7 +1302,10 @@ export default function AIEditorWorkspace() {
       }
       
       console.log('[AIEditor] Slideshow saved successfully, navigating to editor');
-      
+
+      // Clear persisted AI draft after a successful save
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+
       // Navigate to the main slideshow editor in drafts mode
       router.push('/editor?mode=drafts');
       
@@ -1294,6 +1355,9 @@ export default function AIEditorWorkspace() {
     setIsEditorCleared(false);
     ensureThumbnailsForSlides(newSlides.map(s => s.id));
     centerSlide(newSlides[0].id, 100);
+
+    // Persist AI-generated draft so a reload restores it
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(newSlideshow)); } catch {}
   };
 
   const handleGenerateFromJson = (jsonString: string) => {
@@ -1372,6 +1436,9 @@ export default function AIEditorWorkspace() {
     setSlideRenderKey(prev => prev + 1);
     setIsEditorCleared(false);
     ensureThumbnailsForSlides(newSlides.map(s => s.id));
+
+    // Persist AI-generated draft so a reload restores it
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(newSlideshow)); } catch {}
   };
 
   const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
@@ -1461,7 +1528,7 @@ export default function AIEditorWorkspace() {
               console.warn('[AIEditor] Failed to save last used prompt:', error);
             }
 
-            setAiThoughts('');
+            // setAiThoughts('');
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
             let finalJson = '';
@@ -1497,13 +1564,13 @@ export default function AIEditorWorkspace() {
                 } catch {
                   // Fall back to generic error
                 }
-                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
                 setIsGenerating(false);
                 setGenerationCompleted(true); // Hide AI thoughts on error
                 return;
               }
               if (!res.body) {
-                setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
+                // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
                 setIsGenerating(false);
                 setGenerationCompleted(true); // Hide AI thoughts on error
                 return;
@@ -1543,9 +1610,9 @@ export default function AIEditorWorkspace() {
                     else if (line.startsWith('data:')) data += line.slice(5);
                   }
                   if (eventType === 'thought') {
-                    setAiThoughts(prev => prev + data);
+                    // setAiThoughts(prev => prev + data);
                   } else if (eventType === 'thoughtln') {
-                    setAiThoughts(prev => (prev ? prev + '\n' : '') + data);
+                    // setAiThoughts(prev => (prev ? prev + '\n' : '') + data);
                   } else if (eventType === 'json') {
                     try {
                       const obj = JSON.parse(data);
@@ -1564,12 +1631,12 @@ export default function AIEditorWorkspace() {
             run().catch((e) => {
               setIsGenerating(false);
               setGenerationCompleted(true); // Hide AI thoughts on error
-              setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
+              // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
             });
           } catch (e) {
             setIsGenerating(false);
             setGenerationCompleted(true); // Hide AI thoughts on error
-            setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
+            // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
           }
         }}
         onSelectImages={() => setIsSelectCollectionsOpen(true)}
@@ -1641,17 +1708,17 @@ export default function AIEditorWorkspace() {
             
             
             {/* AI Thoughts Floating Text Box - hidden when generation is completed */}
-            {!generationCompleted && (
+            {/* {!generationCompleted && (
               <div className="absolute bottom-4 left-4 z-30 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg p-3 shadow-lg max-w-sm">
                 <div className="text-xs font-medium text-[var(--color-text-muted)] mb-1">AI Thoughts</div>
-                <div 
+                <div
                   ref={aiThoughtsRef}
                   className="text-sm text-[var(--color-text)] font-mono whitespace-pre-wrap max-h-64 overflow-auto pr-1"
                 >
                   {aiThoughts || 'Ready to generate slideshows...'}
                 </div>
               </div>
-            )}
+            )} */}
             
             
             {/* Loading Overlay */}

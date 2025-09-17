@@ -13,10 +13,12 @@ export default function GetStartedButton({ className = '', children = 'Get Start
 
   const handleClick = async () => {
     if (!user) {
-      await signInWithGoogle(`${window.location.origin}/auth/callback?next=/api/stripe/checkout`)
+      // After auth, bounce through a server route that decides destination
+      await signInWithGoogle(`${window.location.origin}/auth/callback?next=/get-started`)
       return
     }
-    window.location.href = '/api/stripe/checkout'
+    // For signed-in users, let the server decide based on subscription
+    window.location.href = '/get-started'
   }
 
   return (

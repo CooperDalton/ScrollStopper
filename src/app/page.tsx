@@ -289,7 +289,7 @@ const FeaturesSection = () => (
           {
             icon: "📱",
             title: "TikTok Scheduler",
-            description: "Schedule your content directly to TikTok for optimal engagement timing.",
+            description: "Plan and schedule your Tik Tok posts seamlessly from one dashboard.",
             status: "coming-soon"
           },
           {

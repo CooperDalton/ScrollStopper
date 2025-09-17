@@ -185,26 +185,19 @@ export default function AISidebar({
         )}
       </div>
 
-
-
-      <div className="p-4 mt-auto border-t border-[var(--color-border)] space-y-2">
-        {/* Temporary button to add a new row above current rows */}
-        <button
-          type="button"
-          onClick={() => { onAddRow?.(); }}
-          className="w-full p-3 bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors"
-        >
-          Add Row (temp)
-        </button>
+      <div className="p-4 border-t border-[var(--color-border)]">
         <button
           type="button"
           onClick={() => {
-            if (onRunGenerate) onRunGenerate({ productId: selectedProductId, prompt });
-            else onGenerate?.();
+            if (!selectedProductId || !prompt.trim()) {
+              return;
+            }
+            onRunGenerate?.({ productId: selectedProductId, prompt: prompt.trim() });
           }}
-          className="w-full p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!selectedProductId || !prompt.trim()}
+          className="w-full p-3 bg-[var(--color-primary)] text-white rounded-xl hover:bg-[var(--color-primary-hover)] disabled:bg-[var(--color-bg-tertiary)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors font-medium"
         >
-          Generate
+          Generate Slideshow
         </button>
       </div>
     </div>

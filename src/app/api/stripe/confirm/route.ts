@@ -48,16 +48,19 @@ export async function GET(request: NextRequest) {
 
       await supabase
         .from('users')
-        .update({
-          role,
-          stripe_customer_id: (session.customer as string) || null,
-          stripe_subscription_status: status || null,
-          stripe_price_id: priceId,
-          current_period_end: subscription?.current_period_end
-            ? new Date(subscription.current_period_end * 1000).toISOString()
-            : null,
-        })
-        .eq('id', userId);
+        .upsert(
+          {
+            id: userId,
+            role,
+            stripe_customer_id: (session.customer as string) || null,
+            stripe_subscription_status: status || null,
+            stripe_price_id: priceId,
+            current_period_end: subscription?.current_period_end
+              ? new Date(subscription.current_period_end * 1000).toISOString()
+              : null,
+          },
+          { onConflict: 'id' }
+        );
     }
 
     // Redirect to the app regardless; role update (if any) is done
@@ -68,4 +71,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/editor`);
   }
 }
-
