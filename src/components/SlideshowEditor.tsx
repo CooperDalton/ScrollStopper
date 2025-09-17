@@ -85,6 +85,41 @@ export default function SlideshowEditor() {
       }
     } catch {}
   }, []);
+
+  // When the font finishes loading, re-measure any existing Fabric text so it doesn't clip
+  useEffect(() => {
+    const anyDoc: any = document;
+    const refreshTextObjects = () => {
+      try {
+        Object.values(canvasRefs.current).forEach((canvas) => {
+          const objects = canvas.getObjects();
+          objects.forEach((obj: any) => {
+            if (obj && obj.isType && (obj as any).isType('i-text')) {
+              obj.set({ objectCaching: false, noScaleCache: true });
+              if (obj.initDimensions) obj.initDimensions();
+              if (obj.setCoords) obj.setCoords();
+            }
+          });
+          canvas.requestRenderAll();
+        });
+      } catch {}
+    };
+
+    try {
+      if (anyDoc?.fonts?.ready) {
+        anyDoc.fonts.ready.then(refreshTextObjects).catch(() => {});
+      }
+      if (anyDoc?.fonts) {
+        anyDoc.fonts.addEventListener?.('loadingdone', refreshTextObjects);
+      }
+    } catch {}
+
+    return () => {
+      try {
+        anyDoc?.fonts?.removeEventListener?.('loadingdone', refreshTextObjects);
+      } catch {}
+    };
+  }, []);
   const {
     slideshows,
     loading,
@@ -1426,6 +1461,8 @@ export default function SlideshowEditor() {
       lockUniScaling: true,
       ...getTextStyling(newText.size)
     });
+    // Avoid cache-canvas metric issues when font loads late
+    (fabricText as any).set({ objectCaching: false, noScaleCache: true });
 
     // Disable all resize controls for text - only allow rotation and movement
     fabricText.setControlsVisibility({
@@ -1484,19 +1521,19 @@ export default function SlideshowEditor() {
         fabricText.set('angle', snappedAngle);
       }
       
-      // Only update stroke width if the font size actually changed
+      // Only update stroke width/padding if the font size actually changed
       if (previousSize !== textData.size) {
         const newStrokeWidth = getStrokeWidthForFontSize(effectiveFontSize);
-        console.log('Updating stroke width:', newStrokeWidth, 'for font size:', effectiveFontSize);
         fabricText.set('strokeWidth', newStrokeWidth);
-        
-        // Clear the text object's cache to force re-render with new stroke width
+        // Increase padding to make selection box include stroke
+        const newPadding = Math.ceil(Math.max(6, newStrokeWidth * 2));
+        fabricText.set('padding', newPadding as any);
+
         if (fabricText._clearCache) {
           fabricText._clearCache();
         }
-        fabricText.dirty = true; // Mark object as needing re-render
-        
-        // Force canvas re-render to show stroke width changes
+        fabricText.dirty = true;
+
         const canvas = canvasRefs.current[selectedSlideId];
         if (canvas) {
           canvas.renderAll();

@@ -85,20 +85,27 @@ export const TEXT_STYLING = {
  * Get complete text styling configuration for fabric.js text objects
  * This function provides all styling properties needed for consistent text rendering
  */
-export const getTextStyling = (fontSize: number = 24) => ({
-  ...TEXT_STYLING,
-  originX: 'center' as const,
-  originY: 'center' as const,
-  stroke: 'black',
-  strokeWidth: getStrokeWidthForFontSize(fontSize),
-  strokeUniform: true as const,
-  strokeLineJoin: 'round' as const,
-  strokeMiterLimit: 2 as const,
-  paintFirst: 'stroke' as const,
-  charSpacing: 0,
-  lineHeight: 0.8,
-  fontSize,
-})
+export const getTextStyling = (fontSize: number = 24) => {
+  const strokeWidth = getStrokeWidthForFontSize(fontSize)
+  const padding = Math.ceil(Math.max(8, strokeWidth * 2))
+  return {
+    ...TEXT_STYLING,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    stroke: 'black',
+    strokeWidth,
+    strokeUniform: true as const,
+    strokeLineJoin: 'round' as const,
+    strokeMiterLimit: 2 as const,
+    paintFirst: 'stroke' as const,
+    charSpacing: 0,
+    lineHeight: 0.8,
+    fontSize,
+    padding,
+    objectCaching: false as const,
+    noScaleCache: true as const,
+  }
+}
 
 /**
  * Text bounds calculation utilities

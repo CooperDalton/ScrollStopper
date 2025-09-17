@@ -45,29 +45,29 @@ export default function CancelSubscriptionCard() {
 
   const onCancel = async () => {
     if (!isSubscribed || isCancelling) return;
-    const confirmed = window.confirm('Cancel your subscription at period end?');
-    if (!confirmed) return;
     setIsCancelling(true);
     try {
       await toastPromise(
-        fetch('/api/stripe/cancel', { method: 'POST' }).then(async (r) => {
+        fetch('/api/stripe/portal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flow: 'cancel' }),
+        }).then(async (r) => {
           const json = await r.json();
-          if (!r.ok) throw new Error(json?.error || 'Cancellation failed');
-          return json as { ok: true; alreadyCanceled: boolean; currentPeriodEnd: string | null };
+          if (!r.ok) throw new Error(json?.error || 'Failed to open billing portal');
+          return json as { url: string };
         }),
         {
-          loading: 'Scheduling cancellation…',
-          success: (d) =>
-            d.currentPeriodEnd
-              ? `Subscription will end on ${new Date(d.currentPeriodEnd).toLocaleString()}`
-              : 'Subscription will end at the current period end',
-          error: (e) => (e instanceof Error ? e.message : 'Failed to cancel subscription'),
+          loading: 'Opening billing portal…',
+          success: 'Redirecting to billing portal…',
+          error: (e) => (e instanceof Error ? e.message : 'Failed to open billing portal'),
         },
       ).then((d) => {
-        setCancellationScheduledFor(d.currentPeriodEnd ?? null);
+        // Redirect user to Stripe Customer Portal to manage/cancel
+        window.location.href = d.url;
       });
     } catch (e) {
-      // toastPromise already toasts error; just reset button state
+      // handled by toastPromise
     } finally {
       setIsCancelling(false);
     }

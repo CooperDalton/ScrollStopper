@@ -95,6 +95,39 @@ export default function AIEditorWorkspace() {
       }
     } catch {}
   }, []);
+
+  // After the font is ready, re-measure existing text objects to avoid clipping
+  React.useEffect(() => {
+    const anyDoc: any = document;
+    const refreshTextObjects = () => {
+      try {
+        Object.values(canvasRefs.current).forEach((canvas: any) => {
+          const objects = canvas?.getObjects?.() || [];
+          objects.forEach((obj: any) => {
+            if (obj && obj.isType && obj.isType('i-text')) {
+              obj.set({ objectCaching: false, noScaleCache: true });
+              if (obj.initDimensions) obj.initDimensions();
+              if (obj.setCoords) obj.setCoords();
+            }
+          });
+          canvas?.requestRenderAll?.();
+        });
+      } catch {}
+    };
+
+    try {
+      if (anyDoc?.fonts?.ready) {
+        anyDoc.fonts.ready.then(refreshTextObjects).catch(() => {});
+      }
+      anyDoc?.fonts?.addEventListener?.('loadingdone', refreshTextObjects);
+    } catch {}
+
+    return () => {
+      try {
+        anyDoc?.fonts?.removeEventListener?.('loadingdone', refreshTextObjects);
+      } catch {}
+    };
+  }, []);
   // Local draft persistence key
   const DRAFT_KEY = 'aiEditorGeneratedSlideshowDraft';
   // Hooks for saving to database
@@ -596,6 +629,19 @@ export default function AIEditorWorkspace() {
       // Handle font size scaling
       const effectiveFontSize = (fabricText.fontSize || 24) * (fabricText.scaleX || 1);
       textData.size = effectiveFontSize;
+      // Keep selection box aligned with stroke thickness
+      try {
+        const sw = getStrokeWidthForFontSize(effectiveFontSize);
+        fabricText.set('strokeWidth', sw);
+        const pad = Math.ceil(Math.max(6, sw * 2));
+        fabricText.set('padding', pad as any);
+        if ((fabricText as any)._clearCache) {
+          (fabricText as any)._clearCache();
+        }
+        (fabricText as any).dirty = true;
+        const canvas = canvasRefs.current[selectedSlideId];
+        canvas?.renderAll();
+      } catch {}
       
       setHasUnsavedChanges(true);
       console.log('[AIEditor] Text data updated:', textData);
@@ -707,6 +753,7 @@ export default function AIEditorWorkspace() {
         angle: newText.rotation,
         lockUniScaling: true,
       });
+      (fabricText as any).set({ objectCaching: false, noScaleCache: true });
 
       // Disable resize controls
       fabricText.setControlsVisibility({
