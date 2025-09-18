@@ -313,23 +313,36 @@ export default function SlideshowEditor() {
   const snapAngle = (angle: number, threshold: number = 8) => {
     // Normalize angle to 0-360 range
     let normalizedAngle = ((angle % 360) + 360) % 360;
-    
+
     // Define snap targets
     const snapTargets = [0, 90, 180, 270];
-    
+
     // Check if angle is close to any snap target
     for (const target of snapTargets) {
       if (Math.abs(normalizedAngle - target) <= threshold) {
         return target;
       }
     }
-    
+
     // Check for 360° wrapping (close to 0°)
     if (normalizedAngle > 360 - threshold) {
       return 0;
     }
-    
+
     return angle; // Return original angle if no snapping needed
+  };
+
+  // Helper function to snap text position to center X-axis during dragging
+  const snapToCenterX = (currentX: number, canvasWidth: number, threshold: number = 20) => {
+    const centerX = canvasWidth / 2;
+    const distanceFromCenter = Math.abs(currentX - centerX);
+
+    // If within threshold, snap to center
+    if (distanceFromCenter <= threshold) {
+      return centerX;
+    }
+
+    return currentX; // Return original position if no snapping needed
   };
 
   // Reusable function to center a slide within the container
@@ -1018,7 +1031,7 @@ export default function SlideshowEditor() {
 
       // Listen for text changes and update data
       fabricText.on('changed', () => updateTextData(textData.id, fabricText));
-      fabricText.on('moving', () => updateTextData(textData.id, fabricText));
+      fabricText.on('moving', () => updateTextData(textData.id, fabricText, true));
       fabricText.on('rotating', () => updateTextData(textData.id, fabricText));
       fabricText.on('scaling', () => updateTextData(textData.id, fabricText));
       
@@ -1481,7 +1494,7 @@ export default function SlideshowEditor() {
 
     // Listen for text changes and update data
     fabricText.on('changed', () => updateTextData(textId, fabricText));
-    fabricText.on('moving', () => updateTextData(textId, fabricText));
+    fabricText.on('moving', () => updateTextData(textId, fabricText, true));
     fabricText.on('rotating', () => updateTextData(textId, fabricText));
     fabricText.on('scaling', () => updateTextData(textId, fabricText));
     
@@ -1495,14 +1508,26 @@ export default function SlideshowEditor() {
     ensureProperLayering(canvas);
   };
 
-  const updateTextData = (textId: string, fabricText: fabric.IText) => {
+  const updateTextData = (textId: string, fabricText: fabric.IText, isMoving: boolean = false) => {
     if (!currentSlide?.texts) return;
 
     const textData = currentSlide.texts.find(t => t.id === textId);
     if (textData) {
       // Update the text data
       textData.text = fabricText.text || 'text';
-      textData.position_x = fabricText.left || 0;
+
+      let finalX = fabricText.left || 0;
+
+      // Apply X-axis snapping only during dragging/moving
+      if (isMoving) {
+        finalX = snapToCenterX(finalX, CANVAS_WIDTH);
+        // Update fabric object position if snapped
+        if (finalX !== (fabricText.left || 0)) {
+          fabricText.set({ left: finalX });
+        }
+      }
+
+      textData.position_x = finalX;
       textData.position_y = fabricText.top || 0;
       
       // For text, we need to account for both fontSize and scaling

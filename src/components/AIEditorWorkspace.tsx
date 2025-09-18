@@ -171,6 +171,42 @@ export default function AIEditorWorkspace() {
   const [isTextDragging, setIsTextDragging] = React.useState<boolean>(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState<boolean>(false);
   const [forceCanvasRefresh, setForceCanvasRefresh] = React.useState<number>(0);
+  // Track latest slideshow for autosave
+  const currentSlideshowRef = React.useRef<any>(null);
+  React.useEffect(() => {
+    currentSlideshowRef.current = currentSlideshow;
+  }, [currentSlideshow, localSlideshows]);
+  // Debounced localStorage autosave for AI drafts
+  const saveDraftTimeoutRef = React.useRef<number | null>(null);
+  const schedulePersistDraft = React.useCallback(() => {
+    try {
+      if (saveDraftTimeoutRef.current) {
+        window.clearTimeout(saveDraftTimeoutRef.current);
+      }
+    } catch {}
+    // Debounce to avoid excessive writes while dragging/typing
+    saveDraftTimeoutRef.current = window.setTimeout(() => {
+      const draft = currentSlideshowRef.current;
+      try {
+        if (draft && draft.slides && draft.slides.length > 0) {
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        }
+      } catch {}
+    }, 400) as unknown as number;
+  }, []);
+  // Ensure we persist on tab close/refresh
+  React.useEffect(() => {
+    const beforeUnload = () => {
+      const draft = currentSlideshowRef.current;
+      try {
+        if (draft && draft.slides && draft.slides.length > 0) {
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        }
+      } catch {}
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, []);
   
   // Scroll durations now come from global config in '@/lib/scroll'
 
@@ -614,15 +650,40 @@ export default function AIEditorWorkspace() {
     } catch {}
   };
 
+  // Helper function to snap text position to center X-axis during dragging
+  const snapToCenterX = (currentX: number, canvasWidth: number, threshold: number = 10) => {
+    const centerX = canvasWidth / 2;
+    const distanceFromCenter = Math.abs(currentX - centerX);
+
+    // If within threshold, snap to center
+    if (distanceFromCenter <= threshold) {
+      return centerX;
+    }
+
+    return currentX; // Return original position if no snapping needed
+  };
+
   // Direct mutation approach (same as main editor)
-  const updateTextData = (textId: string, fabricText: fabric.IText) => {
+  const updateTextData = (textId: string, fabricText: fabric.IText, isMoving: boolean = false) => {
     if (!currentSlide?.texts) return;
 
     const textData = currentSlide.texts.find((t: any) => t.id === textId);
     if (textData) {
       // Direct mutation (same as main editor)
       textData.text = fabricText.text || 'text';
-      textData.position_x = fabricText.left || 0;
+
+      let finalX = fabricText.left || 0;
+
+      // Apply X-axis snapping only during dragging/moving
+      if (isMoving) {
+        finalX = snapToCenterX(finalX, CANVAS_WIDTH);
+        // Update fabric object position if snapped
+        if (finalX !== (fabricText.left || 0)) {
+          fabricText.set({ left: finalX });
+        }
+      }
+
+      textData.position_x = finalX;
       textData.position_y = fabricText.top || 0;
       textData.rotation = fabricText.angle || 0;
       
@@ -644,6 +705,8 @@ export default function AIEditorWorkspace() {
       } catch {}
       
       setHasUnsavedChanges(true);
+      // Persist draft so changes survive reloads even before saving
+      schedulePersistDraft();
       console.log('[AIEditor] Text data updated:', textData);
     }
   };
@@ -660,6 +723,8 @@ export default function AIEditorWorkspace() {
       overlayData.size = Math.round((fabricImg.scaleX || 1) * 100);
       
       setHasUnsavedChanges(true);
+      // Persist draft so changes survive reloads even before saving
+      schedulePersistDraft();
       console.log('[AIEditor] Overlay data updated:', overlayData);
     }
   };
@@ -766,7 +831,7 @@ export default function AIEditorWorkspace() {
 
               // Listen for text changes (now the text data exists so direct mutation will work)
         fabricText.on('changed', () => updateTextData(textId, fabricText));
-        fabricText.on('moving', () => updateTextData(textId, fabricText));
+        fabricText.on('moving', () => updateTextData(textId, fabricText, true));
         fabricText.on('rotating', () => updateTextData(textId, fabricText));
         fabricText.on('scaling', () => updateTextData(textId, fabricText));
 
@@ -887,81 +952,113 @@ export default function AIEditorWorkspace() {
     console.log('[AIEditor] Adding image overlay to slide:', selectedSlideId);
 
     const overlayId = `overlay-${Date.now()}-${Math.random().toString(36).substring(2)}`;
-    const newOverlay: SlideOverlay = {
-      id: overlayId,
-      slide_id: selectedSlideId,
-      image_id: finalImageId, // Use the copied image ID for product images
-      position_x: CANVAS_WIDTH / 2,
-      position_y: CANVAS_HEIGHT / 2,
-      rotation: 0,
-      size: 50,
-      created_at: new Date().toISOString(),
-      imageUrl: imageUrl // Store the URL for canvas restoration
-    };
 
-    // CRITICAL: Direct mutation FIRST (same as main editor)
-    if (!currentSlide.overlays) {
-      currentSlide.overlays = [];
-    }
-    currentSlide.overlays.push(newOverlay);
-    
-    // Update local state to persist when switching slides
-    if (!currentSlideshow) {
-      console.warn('[AIEditor] No slideshow found when adding overlay');
-      return;
-    }
-    
-    updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
-      overlays: currentSlide.overlays
-    });
-
-    // Add to canvas immediately
+    // Add to canvas immediately so we can read intrinsic image size and compute smart scale
     const canvas = canvasRefs.current[selectedSlideId];
     if (canvas) {
       loadFabricImage(imageUrl, { crossOrigin: 'anonymous' }).then((img: fabric.Image) => {
-        const scale = newOverlay.size / 100;
+        // Calculate smart sizing based on image dimensions (match main editor behavior)
+        const canvasWidth = CANVAS_WIDTH;
+        const canvasHeight = CANVAS_HEIGHT;
+        const targetWidth = canvasWidth * 0.5; // Half the canvas width
+        const targetHeight = canvasHeight * 0.5; // Half the canvas height
+
+        const imageWidth = img.width || 100;
+        const imageHeight = img.height || 100;
+
+        // Calculate scale factors for both dimensions and choose smaller to fit within target area
+        const scaleX = targetWidth / imageWidth;
+        const scaleY = targetHeight / imageHeight;
+        const optimalScale = Math.min(scaleX, scaleY);
+        const optimalScalePercent = Math.round(optimalScale * 100);
+
+        const newOverlay: SlideOverlay = {
+          id: overlayId,
+          slide_id: selectedSlideId,
+          image_id: finalImageId,
+          position_x: CANVAS_WIDTH / 2,
+          position_y: CANVAS_HEIGHT / 2,
+          rotation: 0,
+          size: optimalScalePercent,
+          created_at: new Date().toISOString(),
+          imageUrl: imageUrl
+        };
+
+        // Direct mutation and state update (same pattern as main editor)
+        if (!currentSlide.overlays) {
+          currentSlide.overlays = [];
+        }
+        currentSlide.overlays.push(newOverlay);
+
+        if (!currentSlideshow) {
+          console.warn('[AIEditor] No slideshow found when adding overlay');
+          return;
+        }
+
+        updateLocalSlideshow(selectedSlideshowId, selectedSlideId, {
+          overlays: currentSlide.overlays
+        });
+        setHasUnsavedChanges(true);
+
+        // Apply the computed scale and add to canvas
         img.set({
           left: newOverlay.position_x,
           top: newOverlay.position_y,
-          scaleX: scale,
-          scaleY: scale,
+          scaleX: optimalScale,
+          scaleY: optimalScale,
           angle: newOverlay.rotation,
           originX: 'center',
           originY: 'center',
           selectable: true,
           evented: true,
+          lockUniScaling: true
         });
 
-        // Disable some controls for overlays
-        img.setControlsVisibility({
-          ml: false, mb: false, mr: false, mt: false,
-        });
+        // Disable stretching controls for image overlays
+        img.setControlsVisibility({ ml: false, mb: false, mr: false, mt: false });
 
-        // Store overlay ID for reference  
+        // Store overlay ID for reference
         (img as any).overlayId = overlayId;
 
-        // Listen for overlay changes and update data (now overlay data exists so direct mutation will work)
+        // Listen for overlay changes and update data
         const handleOverlayChange = () => {
           updateOverlayData(overlayId, img);
         };
-
         img.on('moving', handleOverlayChange);
         img.on('rotating', handleOverlayChange);
         img.on('scaling', handleOverlayChange);
 
         canvas.add(img);
         canvas.setActiveObject(img);
-        
-        // Ensure proper layering after adding overlay (same as main editor) 
+
+        // Ensure proper layering after adding overlay (same as main editor)
         ensureProperLayering(canvas);
         canvas.renderAll();
-        
+
         console.log('[AIEditor] Overlay added to canvas successfully');
       }).catch((error: unknown) => {
         console.warn('[AIEditor] Failed to load overlay image:', imageUrl, error);
       });
     } else {
       console.warn('[AIEditor] No canvas found for slide:', selectedSlideId);
+      // Fallback: update state with a reasonable default size if we cannot access the canvas
+      const newOverlay: SlideOverlay = {
+        id: overlayId,
+        slide_id: selectedSlideId,
+        image_id: finalImageId,
+        position_x: CANVAS_WIDTH / 2,
+        position_y: CANVAS_HEIGHT / 2,
+        rotation: 0,
+        size: 50,
+        created_at: new Date().toISOString(),
+        imageUrl
+      };
+      if (!currentSlide.overlays) currentSlide.overlays = [];
+      currentSlide.overlays.push(newOverlay);
+      if (currentSlideshow) {
+        updateLocalSlideshow(selectedSlideshowId, selectedSlideId, { overlays: currentSlide.overlays });
+        setHasUnsavedChanges(true);
+      }
     }
 
     // If this was a public image, import in background and swap the overlay image_id
@@ -1073,7 +1170,7 @@ export default function AIEditorWorkspace() {
 
         // Listen for text changes and update data
         fabricText.on('changed', () => updateTextData(textData.id, fabricText));
-        fabricText.on('moving', () => updateTextData(textData.id, fabricText));
+        fabricText.on('moving', () => updateTextData(textData.id, fabricText, true));
         fabricText.on('rotating', () => updateTextData(textData.id, fabricText));
 
         canvas.add(fabricText);

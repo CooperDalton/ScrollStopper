@@ -4,16 +4,16 @@
  */
 
 // Available font sizes in ascending order
-export const FONT_SIZES = [12, 16, 20, 24, 32, 40, 48, 56, 64] as const
+export const FONT_SIZES = [12, 14, 16, 20, 24, 32, 40, 48, 56, 64] as const
 
 // Corresponding stroke widths for each font size
 //export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.75, 1, 1, 1, 1.25, 1.5] as const
 //export const STROKE_WIDTHS = [0.25, 0.5, 0.5, 0.70, 0.85, 1, 1, 1.25, 1.5] as const
-export const STROKE_WIDTHS = [0.75,1.5,2.25,3,3.75,4.5,5.25,6,6.75] as const
+export const STROKE_WIDTHS = [0.75, 1.15, 1.5,2.25,3,3.75,4.5,5.25,6,6.75] as const
 
 // Maximum characters per line for each font size
 //export const MAX_CHARS_PER_LINE = [54, 40, 34, 30, 26, 22, 18, 14, 10] as const
-export const MAX_CHARS_PER_LINE = [40, 32, 26, 20, 18, 16, 14, 10, 6] as const
+export const MAX_CHARS_PER_LINE = [40, 36, 32, 26, 20, 18, 16, 14, 10, 6] as const
 
 // Type definitions for type safety
 export type FontSize = typeof FONT_SIZES[number]
@@ -99,7 +99,7 @@ export const getTextStyling = (fontSize: number = 24) => {
     strokeMiterLimit: 2 as const,
     paintFirst: 'stroke' as const,
     charSpacing: 0,
-    lineHeight: 0.8,
+    lineHeight: 1,
     fontSize,
     padding,
     objectCaching: false as const,

@@ -521,7 +521,7 @@ REQUIRED JSON STRUCTURE:
           "text": "Text on the slide",
           "position_x": 150,
           "position_y": 200,
-          "size": 32
+          "size": 24
         }
       ],
       "overlays": []
@@ -533,7 +533,7 @@ REQUIRED JSON STRUCTURE:
           "text": "Another slide text",
           "position_x": 150,
           "position_y": 200,
-          "size": 24
+          "size": 16
         }
       ],
       "overlays": []
@@ -564,6 +564,7 @@ TEXT POSITIONING (CENTER-ANCHORED):
 - DO NOT split paragraphs/sentences into multiple text objects - use \\n instead
 - Multiple text objects only for different elements (e.g., separate title and body text)
 - Longer text needs more horizontal clearance from edges
+- Prefer smaller font sizes than you would normally use, it looks better when the text is smaller
 - Prefer center positions (X=${CANVAS_WIDTH / 2}) for better visual balance
 
 Return ONLY the JSON object. No explanations, no markdown.`

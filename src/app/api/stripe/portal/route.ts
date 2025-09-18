@@ -72,17 +72,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: returnUrl,
-      // If we couldn't find a subscription, we still create a generic portal session.
-      ...(flow_data ? { flow_data } : {}),
-    });
+    async function createSession(params: Stripe.BillingPortal.SessionCreateParams) {
+      return stripe.billingPortal.sessions.create(params);
+    }
 
-    return NextResponse.json({ url: session.url });
+    // First try with deep-link flow_data (if any)
+    try {
+      const session = await createSession({
+        customer: customerId,
+        return_url: returnUrl,
+        ...(flow_data ? { flow_data } : {}),
+      });
+      return NextResponse.json({ url: session.url });
+    } catch (e: any) {
+      console.warn('[portal] flow_data session create failed, falling back', e?.message || e);
+      // Fall back to a plain portal session so users can still manage/cancel
+      try {
+        const session = await createSession({ customer: customerId, return_url: returnUrl });
+        return NextResponse.json({ url: session.url });
+      } catch (e2: any) {
+        const message = e2?.message || 'Failed to create portal session';
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    }
   } catch (err) {
     console.error('Stripe portal error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
-

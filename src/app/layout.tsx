@@ -43,7 +43,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
-          href="https://fonts.googleapis.com/css2?family=TikTok+Sans:opsz,wdth,wght@12..36,106.9,300..900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=TikTok+Sans:opsz,wdth,wght@12..36,100,300..900&display=swap"
           rel="stylesheet"
         />
         <link rel="stylesheet" href="https://use.typekit.net/ioz6eoq.css" />

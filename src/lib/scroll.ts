@@ -1,7 +1,7 @@
 // Global scroll configuration and helpers
 
-export const FAST_SCROLL_DURATION_X_MS = 300;
-export const FAST_SCROLL_DURATION_Y_MS = 300;
+export const FAST_SCROLL_DURATION_X_MS = 250;
+export const FAST_SCROLL_DURATION_Y_MS = 250;
 
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
 
