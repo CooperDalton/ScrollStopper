@@ -30,7 +30,7 @@ async function getSubscriptionPeriod(service: ReturnType<typeof createServiceSup
     return null;
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-12-15.clover' });
 
   // Prefer active subscription; fallback to trialing
   const tryStatuses: Stripe.Subscription.Status[] = ['active', 'trialing'];
@@ -39,8 +39,8 @@ async function getSubscriptionPeriod(service: ReturnType<typeof createServiceSup
     const sub = list.data[0];
     if (sub) {
       return {
-        period_start: toISODate(sub.current_period_start * 1000),
-        period_end: toISODate(sub.current_period_end * 1000),
+        period_start: toISODate((sub as any).current_period_start * 1000),
+        period_end: toISODate((sub as any).current_period_end * 1000),
       };
     }
   }

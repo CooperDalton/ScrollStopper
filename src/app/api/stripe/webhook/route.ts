@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2023-10-16',
+    apiVersion: '2025-12-15.clover',
   })
 
   const rawBody = await request.text()
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
                 stripe_customer_id: sub.customer as string | null,
                 stripe_subscription_status: status,
                 stripe_price_id: priceId,
-                current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+                current_period_end: (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000).toISOString() : null,
               },
               { onConflict: 'id' }
             )

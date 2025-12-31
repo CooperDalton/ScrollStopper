@@ -40,7 +40,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2023-10-16',
+      apiVersion: '2025-12-15.clover',
     });
 
     // Prefer an active/trialing/past_due subscription; else report last canceled if present.
@@ -63,7 +63,7 @@ export async function GET(_request: NextRequest) {
         isSubscribed: false,
         status: canceled ? canceled.status : null,
         cancelAtPeriodEnd: false,
-        currentPeriodEnd: canceled?.current_period_end ? new Date(canceled.current_period_end * 1000).toISOString() : null,
+        currentPeriodEnd: (canceled as any)?.current_period_end ? new Date((canceled as any).current_period_end * 1000).toISOString() : null,
         canceledAt: canceled?.canceled_at ? new Date(canceled.canceled_at * 1000).toISOString() : null,
       });
     }
@@ -73,7 +73,7 @@ export async function GET(_request: NextRequest) {
       isSubscribed: subscription.status === 'active' || subscription.status === 'trialing' || subscription.status === 'past_due',
       status: subscription.status,
       cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
-      currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+      currentPeriodEnd: (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000).toISOString() : null,
       canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
     });
   } catch (err) {

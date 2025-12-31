@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2023-10-16',
+      apiVersion: '2025-12-15.clover',
     });
 
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
@@ -55,8 +55,8 @@ export async function GET(request: NextRequest) {
             stripe_customer_id: (session.customer as string) || null,
             stripe_subscription_status: status || null,
             stripe_price_id: priceId,
-            current_period_end: subscription?.current_period_end
-              ? new Date(subscription.current_period_end * 1000).toISOString()
+            current_period_end: (subscription as any)?.current_period_end
+              ? new Date((subscription as any).current_period_end * 1000).toISOString()
               : null,
           },
           { onConflict: 'id' }

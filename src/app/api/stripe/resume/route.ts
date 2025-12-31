@@ -33,7 +33,7 @@ export async function POST(_request: NextRequest) {
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2023-10-16',
+      apiVersion: '2025-12-15.clover',
     });
 
     // Find an active/trialing/past_due subscription
@@ -56,8 +56,8 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({
         ok: true,
         alreadyActive: true,
-        currentPeriodEnd: subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000).toISOString()
+        currentPeriodEnd: (subscription as any).current_period_end
+          ? new Date((subscription as any).current_period_end * 1000).toISOString()
           : null,
       });
     }
@@ -69,8 +69,8 @@ export async function POST(_request: NextRequest) {
     return NextResponse.json({
       ok: true,
       alreadyActive: false,
-      currentPeriodEnd: updated.current_period_end
-        ? new Date(updated.current_period_end * 1000).toISOString()
+      currentPeriodEnd: (updated as any).current_period_end
+        ? new Date((updated as any).current_period_end * 1000).toISOString()
         : null,
     });
   } catch (err) {

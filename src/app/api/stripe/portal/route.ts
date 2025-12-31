@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const flow = body.flow ?? 'default';
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2023-10-16',
+      apiVersion: '2025-12-15.clover',
     });
 
     const origin = new URL(request.url).origin;
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
             // Let Dashboard configuration drive which options show.
             // Enabling ensures Stripe records a reason if configured.
             cancellation_reason: { enabled: true },
-          },
+          } as any,
         };
       }
     }
