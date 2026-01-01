@@ -104,8 +104,15 @@ export default function CancelSubscriptionCard() {
       {loading ? (
         <p className="text-[var(--color-text-muted)]">Loading…</p>
       ) : alreadyCanceled ? (
-        <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <p className="text-[var(--color-text-muted)]">Your subscription has been canceled.</p>
+          <button
+            type="button"
+            onClick={() => (window.location.href = '/api/stripe/checkout')}
+            className="inline-flex items-center justify-center rounded-lg bg-[var(--color-primary)] text-white px-4 py-2 text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors"
+          >
+            Upgrade to Pro
+          </button>
         </div>
       ) : isSubscribed ? (
         <div className="space-y-4">
@@ -135,7 +142,16 @@ export default function CancelSubscriptionCard() {
           )}
         </div>
       ) : (
-        <p className="text-[var(--color-text-muted)]">You are on the Free plan.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <p className="text-[var(--color-text-muted)]">You are on the Free plan.</p>
+          <button
+            type="button"
+            onClick={() => (window.location.href = '/api/stripe/checkout')}
+            className="inline-flex items-center justify-center rounded-lg bg-[var(--color-primary)] text-white px-4 py-2 text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors"
+          >
+            Upgrade to Pro
+          </button>
+        </div>
       )}
     </div>
   );
