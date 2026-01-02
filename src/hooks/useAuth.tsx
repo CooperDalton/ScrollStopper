@@ -21,7 +21,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const insertUserToDB = async (userData: User) => {
     try {
-      console.log('Inserting user to database:', userData.email)
       
       const response = await fetch('/api/insert-user', {
         method: 'POST',
@@ -56,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event)
         
         setSession(session)
         setUser(session?.user ?? null)

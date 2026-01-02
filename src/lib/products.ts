@@ -274,14 +274,12 @@ export async function uploadProductImage(
 
     // Fire-and-forget: trigger server-side AI description generation
     try {
-      console.log('[products] Trigger AI description for product image:', inserted.id)
       // Not awaiting to avoid blocking UI flow
       describeProductImageAI(inserted.id)
         .then((res) => {
           if (res.error) {
             console.error('[products] AI description error:', res.error)
           } else {
-            console.log('[products] AI description saved for image:', inserted.id, 'len=', res.description?.length || 0)
           }
         })
         .catch((e) => {

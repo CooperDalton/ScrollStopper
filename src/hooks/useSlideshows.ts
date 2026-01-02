@@ -766,13 +766,18 @@ export function useSlideshows() {
       if (deleteError) throw deleteError
 
       // Then insert all current overlays
-      if (overlays.length > 0) {
+      const validOverlays = overlays.filter(o => o.image_id && o.image_id.trim() !== '');
+      if (validOverlays.length < overlays.length) {
+        console.warn(`[useSlideshows] Filtered out ${overlays.length - validOverlays.length} invalid overlays for slide ${slideId}`);
+      }
+
+      if (validOverlays.length > 0) {
         const toInt = (value: unknown) => {
           const n = Number(value)
           return Number.isFinite(n) ? Math.round(n) : 0
         }
 
-        const overlayInserts = overlays.map(overlay => ({
+        const overlayInserts = validOverlays.map(overlay => ({
           slide_id: slideId,
           image_id: overlay.image_id,
           position_x: toInt(overlay.position_x),
@@ -1192,26 +1197,17 @@ export function useSlideshows() {
 
       for (let i = 0; i < slideshow.slides.length; i++) {
         const slide = slideshow.slides[i]
-        console.log(`Processing slide ${i + 1}/${total}:`, slide.id)
         
         const canvas = await getSlideCanvas(slide.id)
-        console.log(`Canvas lookup result for slide ${slide.id}:`, canvas ? 'Found' : 'Not found')
-        
         if (!canvas) {
-          console.log(`No canvas found for slide ${slide.id}, skipping...`)
-          console.log(`Available slides in slideshow:`, slideshow.slides.map(s => ({ id: s.id, index: s.index })))
           continue
         }
-        
-        console.log(`Canvas found for slide ${slide.id}, rendering...`)
 
         const targetWidth = 1080
         const multiplier = targetWidth / canvas.getWidth()
         const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier })
         const file = await (await fetch(dataUrl)).blob()
         const path = `${user.id}/${slideshowId}/${slide.id}.jpg`
-        
-        console.log(`Uploading slide ${slide.id} to path:`, path)
         
         try {
           const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
@@ -1224,23 +1220,18 @@ export function useSlideshows() {
             throw uploadError
           }
           
-          console.log(`Successfully uploaded slide ${slide.id}`)
           
           // Note: frame_paths is stored in slideshows table, not slides table
           // Individual slide frame paths are tracked in the slideshows.frame_paths array
           
           framePaths.push(path)
-          console.log(`Added slide ${slide.id} to framePaths. Total frames:`, framePaths.length)
         } catch (uploadError) {
           console.error('Failed to upload slide frame:', uploadError)
           // Continue with other slides even if one fails
         }
 
         onProgress?.(i + 1, total)
-        console.log(`Completed slide ${i + 1}/${total}`)
       }
-
-      console.log('All slides processed. Final framePaths:', framePaths)
       
       const { error: finalUpdateError } = await supabase
         .from('slideshows')
@@ -1252,7 +1243,6 @@ export function useSlideshows() {
         throw finalUpdateError
       }
       
-      console.log('Successfully updated slideshow status to completed')
 
       setSlideshows(prev =>
         prev.map(s =>

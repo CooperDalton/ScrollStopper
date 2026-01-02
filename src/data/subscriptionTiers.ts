@@ -14,8 +14,8 @@ export const subscriptionTiers = {
   Pro: {
     name: "Pro",
     priceInCents: 1800,
-    maxNumberOfSlideshows: 50,
-    maxNumberOfAIGenerations: 20,
+    maxNumberOfSlideshows: 150,
+    maxNumberOfAIGenerations: 60,
     stripePriceId: env.STRIPE_PRO_PLAN_STRIPE_PRICE_ID,
   },
 } as const

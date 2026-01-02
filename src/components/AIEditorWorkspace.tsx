@@ -471,15 +471,12 @@ export default function AIEditorWorkspace() {
 
   // Force canvas refresh when local state changes to ensure elements persist
   React.useEffect(() => {
-    if (forceCanvasRefresh > 0 && selectedSlideId) {
-      console.log('[AIEditor] Forcing canvas refresh for slide:', selectedSlideId);
-      
+      if (forceCanvasRefresh > 0 && selectedSlideId) {
       // Small delay to ensure state updates have flushed
       setTimeout(() => {
         const canvas = canvasRefs.current[selectedSlideId];
         if (canvas) {
           // Get the current slide data with latest updates
-          console.log('[AIEditor] Refreshing canvas with slide data:', currentSlide);
           
           if (currentSlide) {
             // Refresh canvas without disposing - just ensure all elements are present
@@ -707,7 +704,6 @@ export default function AIEditorWorkspace() {
       setHasUnsavedChanges(true);
       // Persist draft so changes survive reloads even before saving
       schedulePersistDraft();
-      console.log('[AIEditor] Text data updated:', textData);
     }
   };
 
@@ -725,7 +721,6 @@ export default function AIEditorWorkspace() {
       setHasUnsavedChanges(true);
       // Persist draft so changes survive reloads even before saving
       schedulePersistDraft();
-      console.log('[AIEditor] Overlay data updated:', overlayData);
     }
   };
 
@@ -777,7 +772,6 @@ export default function AIEditorWorkspace() {
       return;
     }
 
-    console.log('[AIEditor] Adding text element to slide:', selectedSlideId);
 
     const textId = `text-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     const newText: SlideText = {
@@ -841,8 +835,6 @@ export default function AIEditorWorkspace() {
       // Ensure proper layering after adding text (same as main editor)
       ensureProperLayering(canvas);
       canvas.renderAll();
-      
-      console.log('[AIEditor] Text added to canvas successfully');
     } else {
       console.warn('[AIEditor] No canvas found for slide:', selectedSlideId);
     }
@@ -851,7 +843,6 @@ export default function AIEditorWorkspace() {
   const handleBackgroundImageSelect = (imageUrl: string, imageId: string) => {
     if (!currentSlide) return;
 
-    console.log('[AIEditor] Updating background image:', { imageUrl, imageId });
 
     // Direct mutation FIRST (same as main editor)
     currentSlide.background_image_id = imageId;
@@ -894,8 +885,6 @@ export default function AIEditorWorkspace() {
         // CRITICAL: Ensure proper layering after adding background (same as main editor)
         ensureProperLayering(canvas);
         canvas.renderAll();
-        
-        console.log('[AIEditor] Background image updated successfully');
       }).catch((error: unknown) => {
         console.warn('[AIEditor] Failed to load background image:', imageUrl, error);
       });
@@ -936,7 +925,6 @@ export default function AIEditorWorkspace() {
 
     // If this is a product image, copy it to the images table first
     if (!isPublic && isProductImage) {
-      console.log('[AIEditor] Copying product image for overlay:', imageId);
       const { image, error } = await copyProductImageForOverlay(imageId);
       if (error) {
         console.error('[AIEditor] Failed to copy product image:', error);
@@ -945,11 +933,9 @@ export default function AIEditorWorkspace() {
       }
       if (image) {
         finalImageId = image.id;
-        console.log('[AIEditor] Product image copied successfully, new ID:', finalImageId);
       }
     }
 
-    console.log('[AIEditor] Adding image overlay to slide:', selectedSlideId);
 
     const overlayId = `overlay-${Date.now()}-${Math.random().toString(36).substring(2)}`;
 
@@ -1035,7 +1021,6 @@ export default function AIEditorWorkspace() {
         ensureProperLayering(canvas);
         canvas.renderAll();
 
-        console.log('[AIEditor] Overlay added to canvas successfully');
       }).catch((error: unknown) => {
         console.warn('[AIEditor] Failed to load overlay image:', imageUrl, error);
       });
@@ -1105,8 +1090,6 @@ export default function AIEditorWorkspace() {
       return;
     }
 
-    console.log('[AIEditor] Initializing canvas for slide:', slideId);
-    console.log('[AIEditor] Slide data during initialization:', slide);
 
     try {
       const canvas = new fabric.Canvas(canvasElement, {
@@ -1120,7 +1103,6 @@ export default function AIEditorWorkspace() {
       canvasRefs.current[slideId] = canvas;
 
       // Restore slide elements from current state
-      console.log('[AIEditor] Restoring elements - Texts:', slide.texts?.length || 0, 'Overlays:', slide.overlays?.length || 0);
 
       if (slide.backgroundImage) {
         fabric.Image.fromURL(
@@ -1176,7 +1158,6 @@ export default function AIEditorWorkspace() {
         canvas.add(fabricText);
       });
       
-      console.log('[AIEditor] Restored', slide.texts?.length || 0, 'text elements');
       
       slide.overlays?.forEach((overlayData: any) => {
         if (overlayData.imageUrl) {
@@ -1230,8 +1211,6 @@ export default function AIEditorWorkspace() {
           );
         }
       });
-      
-      console.log('[AIEditor] Restored', slide.overlays?.length || 0, 'overlay elements');
 
       // Ensure proper layering after restoring all elements (same as main editor)
       ensureProperLayering(canvas);
@@ -1337,7 +1316,6 @@ export default function AIEditorWorkspace() {
     setIsSaving(true);
     
     try {
-      console.log('[AIEditor] Starting save process for slideshow:', currentSlideshow.name);
       
       // Preprocess slides: ensure any public images are imported and IDs point to images table
       const slidesCopy = JSON.parse(JSON.stringify(currentSlideshow.slides || []));
@@ -1387,7 +1365,6 @@ export default function AIEditorWorkspace() {
       }
 
       if (publicTasks.length > 0) {
-        console.log(`[AIEditor] Importing ${publicTasks.length} public image(s) before save...`);
         await Promise.all(publicTasks);
         // After import, update local state so UI reflects final ids/urls
         setLocalSlideshows(prev => prev.map(s => s.id === currentSlideshow.id ? { ...s, slides: slidesCopy } : s));
@@ -1400,7 +1377,6 @@ export default function AIEditorWorkspace() {
         currentSlideshow.aspect_ratio || '9:16'
       );
       
-      console.log('[AIEditor] Created slideshow in database:', savedSlideshow.id);
       
       // Delete the initial blank slide that createSlideshow creates
       if (savedSlideshow.slides.length > 0) {
@@ -1426,16 +1402,13 @@ export default function AIEditorWorkspace() {
         
       if (slideError) throw slideError;
       
-      console.log('[AIEditor] Created slides in database:', createdSlides?.length);
-      
-      // Save texts and overlays for each slide
+      // Save overlays 
       for (let i = 0; i < (slidesCopy || currentSlideshow.slides).length; i++) {
         const localSlide = (slidesCopy || currentSlideshow.slides)[i];
         const dbSlide = createdSlides?.[i];
         
         if (!dbSlide) continue;
         
-        console.log(`[AIEditor] Saving slide ${i + 1}/${(slidesCopy || currentSlideshow.slides).length} - texts: ${localSlide.texts?.length || 0}, overlays: ${localSlide.overlays?.length || 0}`);
         
         // Save texts
         if (localSlide.texts && localSlide.texts.length > 0) {
@@ -1448,15 +1421,19 @@ export default function AIEditorWorkspace() {
         
         // Save overlays 
         if (localSlide.overlays && localSlide.overlays.length > 0) {
-          const overlaysToSave = localSlide.overlays.map((overlay: any) => ({
-            ...overlay,
-            slide_id: dbSlide.id
-          }));
-          await saveSlideOverlays(dbSlide.id, overlaysToSave);
+          // Filter out overlays with invalid/missing image_id to prevent database errors
+          const overlaysToSave = localSlide.overlays
+            .filter((overlay: any) => overlay.image_id && overlay.image_id.trim() !== '')
+            .map((overlay: any) => ({
+              ...overlay,
+              slide_id: dbSlide.id
+            }));
+            
+          if (overlaysToSave.length > 0) {
+            await saveSlideOverlays(dbSlide.id, overlaysToSave);
+          }
         }
       }
-      
-      console.log('[AIEditor] Slideshow saved successfully, navigating to editor');
 
       // Clear persisted AI draft after a successful save
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -1597,7 +1574,6 @@ export default function AIEditorWorkspace() {
   };
 
   const handleSlideSelect = (slideId: string, options?: { fastVertical?: boolean; fastHorizontal?: boolean }) => {
-    console.log('[AIEditor] Selecting slide:', slideId, 'from current:', selectedSlideId);
     
     // Clear text selection when changing slides (same as main editor)
     updateSelectedTextObject(null);
@@ -1605,7 +1581,6 @@ export default function AIEditorWorkspace() {
     // Save current canvas state before disposing
     const currentCanvas = canvasRefs.current[selectedSlideId];
     if (currentCanvas && selectedSlideId) {
-      console.log('[AIEditor] Saving canvas state for current slide:', selectedSlideId);
       try {
         const dataUrl = currentCanvas.toDataURL({ format: 'png' });
         setThumbnails(prev => ({ ...prev, [selectedSlideId]: dataUrl }));
@@ -1628,7 +1603,6 @@ export default function AIEditorWorkspace() {
     setSelectedSlideId(slideId);
     centerSlide(slideId, 50, options);
     
-    console.log('[AIEditor] Slide selection complete:', slideId);
   };
 
   // Create a new slideshow with 5 blank slides
@@ -1742,14 +1716,6 @@ export default function AIEditorWorkspace() {
                   if (finalJson) {
                     handleGenerateFromJson(finalJson);
                   }
-                  // Increment AI generation usage counter (best-effort)
-                  try {
-                    await fetch('/api/usage/increment', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ metric: 'ai_generations', amount: 1 }),
-                    });
-                  } catch {}
                   break;
                 }
                 const chunkText = decoder.decode(value, { stream: true });
@@ -1944,14 +1910,13 @@ export default function AIEditorWorkspace() {
         isOpen={isSelectCollectionsOpen}
         onClose={() => setIsSelectCollectionsOpen(false)}
         onSelect={({ userCollectionIds, publicCollectionIds }) => {
-          // Persist both types locally; backend currently expects user collections only,
-          // so we store user IDs in selectedCollectionIds and keep public separately for future use.
-          setSelectedCollectionIds(userCollectionIds)
+          setSelectedCollectionIds(userCollectionIds);
+          setSelectedPublicCollectionIds(publicCollectionIds);
           try {
-            localStorage.setItem('aiEditorSelectedUserCollectionIds', JSON.stringify(userCollectionIds))
-            localStorage.setItem('aiEditorSelectedPublicCollectionIds', JSON.stringify(publicCollectionIds))
+            localStorage.setItem('aiEditorSelectedUserCollectionIds', JSON.stringify(userCollectionIds));
+            localStorage.setItem('aiEditorSelectedPublicCollectionIds', JSON.stringify(publicCollectionIds));
           } catch {}
-          setIsSelectCollectionsOpen(false)
+          setIsSelectCollectionsOpen(false);
         }}
         title="Select Collections for AI Generation"
       />

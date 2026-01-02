@@ -40,11 +40,3 @@ const getStrokeWidthForFontSize = (fontSize) => {
   const ratio = (fontSize - lowerSize) / (upperSize - lowerSize);
   return lowerStroke + (upperStroke - lowerStroke) * ratio;
 };
-
-console.log('Testing stroke width calculations:');
-console.log('Font size 24:', getStrokeWidthForFontSize(24));
-console.log('Font size 48:', getStrokeWidthForFontSize(48));
-console.log('Font size 64:', getStrokeWidthForFontSize(64));
-console.log('Font size 86.4 (24 * 3.6):', getStrokeWidthForFontSize(86.4));
-console.log('Font size 172.8 (48 * 3.6):', getStrokeWidthForFontSize(172.8));
-console.log('Font size 230.4 (64 * 3.6):', getStrokeWidthForFontSize(230.4));

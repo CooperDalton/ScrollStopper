@@ -350,7 +350,6 @@ export default function ImageUploadModal({ isOpen, onClose, collection, onUpload
                             setImageLoadErrors(prev => new Set(prev).add(image.id));
                           }}
                           onLoad={() => {
-                            console.log('Successfully loaded image:', imageUrl);
                             setImageLoadErrors(prev => {
                               const newSet = new Set(prev);
                               newSet.delete(image.id);

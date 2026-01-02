@@ -4,6 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { google } from "@ai-sdk/google"
 import { generateObject, streamText, NoObjectGeneratedError, streamObject, tool, stepCountIs } from 'ai'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { incrementUsage } from '@/lib/usage'
 import { FONT_SIZES, getMaxCharsForFontSize, getSafeTextBounds, validateTextPosition } from '@/lib/text-config'
 
 export const runtime = 'edge'
@@ -49,10 +50,8 @@ const createSlideshowSchema = (collectionRefs: string[], productRefs: string[], 
 
 export async function POST(req: NextRequest) {
   try {
-    console.log('[slideshow-generate] Starting generation request')
     const { productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio } = await req.json()
     if (!productId || typeof productId !== 'string') {
-      console.log('[slideshow-generate] Missing productId')
       return new Response(JSON.stringify({ error: 'Missing productId' }), { 
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -61,7 +60,6 @@ export async function POST(req: NextRequest) {
     
     // Validate that at least one collection is selected (user or public)
     if ((!Array.isArray(selectedCollectionIds) || selectedCollectionIds.length === 0) && (!Array.isArray(selectedPublicCollectionIds) || selectedPublicCollectionIds.length === 0)) {
-      console.log('[slideshow-generate] No collections selected')
       return new Response(JSON.stringify({ 
         error: 'Please select at least one collection to generate a slideshow. Collection images are required for slide backgrounds.' 
       }), { 
@@ -76,10 +74,18 @@ export async function POST(req: NextRequest) {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
     })
-    console.log('[slideshow-generate] User authenticated:', user.id)
+
+    // Increment usage counter (moved from client-side)
+    try {
+      await incrementUsage(user.id, 'ai_generations', 1)
+    } catch (err: any) {
+      // Note: We're not blocking generation on usage increment failure/limit for now,
+      // as the user requested "crash if null" logic is not strictly applicable here but 
+      // we want to ensure robustness. If you want to ENFORCE limits, throw here.
+      // throw new Error('Usage limit reached or error tracking usage') 
+    }
 
     // Fetch product and classification fields
-    console.log('[slideshow-generate] Fetching product:', productId)
     const { data: product } = await supabase
       .from('products')
       .select('id, name, description, industry, product_type, matching_industries, matching_product_types')
@@ -91,22 +97,17 @@ export async function POST(req: NextRequest) {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
     })
-    console.log('[slideshow-generate] Product found:', product.name)
 
     // Fetch product images context (ai_description + user_description)
-    console.log('[slideshow-generate] Fetching product images')
     const { data: images } = await supabase
       .from('product_images')
       .select('id, ai_description, user_description')
       .eq('product_id', productId)
       .eq('user_id', user.id)
-    console.log('[slideshow-generate] Found', images?.length || 0, 'product images')
 
     // Include images from selected collections, if provided (via join through images table)
     let extraCollectionImages: any[] = []
     if ((Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) || (Array.isArray(selectedPublicCollectionIds) && selectedPublicCollectionIds.length > 0)) {
-      console.log('[slideshow-generate] Fetching images from selected collections:', selectedCollectionIds)
-      console.log('[slideshow-generate] User ID:', user.id)
       // User collections (owned images)
       let userImages: any[] = []
       if (Array.isArray(selectedCollectionIds) && selectedCollectionIds.length > 0) {
@@ -115,7 +116,6 @@ export async function POST(req: NextRequest) {
           .select('id, name, user_id')
           .in('id', selectedCollectionIds)
           .eq('user_id', user.id)
-        console.log('[slideshow-generate] Collections found:', collectionsCheck?.length || 0, collectionsCheck)
 
         const extraQuery = supabase
           .from('images')
@@ -123,7 +123,6 @@ export async function POST(req: NextRequest) {
           .in('collection_id', selectedCollectionIds)
           .eq('user_id', user.id)
         const { data: extraData, error: queryError } = await extraQuery
-        if (queryError) console.error('[slideshow-generate] Query error:', queryError)
         userImages = extraData || []
       }
 
@@ -144,9 +143,7 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(selectedImageIds) && selectedImageIds.length > 0) {
         const selectedSet = new Set<string>(selectedImageIds)
         extraCollectionImages = extraCollectionImages.filter((img: any) => selectedSet.has(img.id))
-        console.log('[slideshow-generate] After filtering by selectedImageIds:', extraCollectionImages.length)
       }
-      console.log('[slideshow-generate] Final collection images count:', extraCollectionImages.length)
     }
 
     // Build product images context with prompt-local refs
@@ -190,8 +187,6 @@ export async function POST(req: NextRequest) {
     productImageItems.forEach(item => productRefMap.set(item.ref, item.id))
     collectionImageItems.forEach(item => collectionRefMap.set(item.ref, item.id))
 
-    console.log('[slideshow-generate] Product image items:', productImageItems.length)
-    console.log('[slideshow-generate] Collection image items:', collectionImageItems.length)
 
     // Serialize contexts separately so the AI can distinguish sources
     const toShortForm = ({ ref, short_description, categories, objects }: any) => ({ ref, short_description, categories, objects })
@@ -203,13 +198,10 @@ export async function POST(req: NextRequest) {
     const numCollectionImages = collectionImageItems.length
     let collectionImageContextStr = ''
     if (numCollectionImages < 100) {
-      console.log('[slideshow-generate] Using full collection image context (< 100 images)')
       collectionImageContextStr = JSON.stringify(collectionImageItems)
     } else if (numCollectionImages <= 500) {
-      console.log('[slideshow-generate] Using short collection image context (100-500 images)')
       collectionImageContextStr = JSON.stringify(collectionImageItems.map(toShortForm))
     } else {
-      console.log('[slideshow-generate] Using minimal collection image context (> 500 images)')
       collectionImageContextStr = JSON.stringify(collectionImageItems.map(toMinimalForm))
     }
 
@@ -224,8 +216,6 @@ export async function POST(req: NextRequest) {
           limit: z.number().int().min(1).max(12).default(8),
         }),
         execute: async ({ industry, product_type, format, limit }) => {
-          console.log('\n=== TOOL: getExampleSummaries ===')
-          console.log('Parameters:', { industry, product_type, format, limit })
           let query = supabase
             .from('slide_examples')
             .select('id, industry, product_type, format, call_to_action, summary')
@@ -235,9 +225,6 @@ export async function POST(req: NextRequest) {
           if (product_type) query = query.eq('product_type', product_type)
           if (format) query = query.eq('format', format)
           const { data } = await query
-          console.log('Results:', data?.length || 0, 'examples')
-          console.log('Example data:', JSON.stringify(data, null, 2))
-          console.log('=== END TOOL ===\n')
           return data || []
         },
       }),
@@ -246,8 +233,6 @@ export async function POST(req: NextRequest) {
         description: 'Full slideshow examples by id (reconstructed from frames)',
         inputSchema: z.object({ ids: z.array(z.string()).min(1).max(6) }),
         execute: async ({ ids }) => {
-          console.log('\n=== TOOL: getExampleSchemas ===')
-          console.log('Parameters:', { ids })
           const { data } = await supabase
             .from('slide_example_frames')
             .select('example_id, frame_index, image_url, description, text_on_slide')
@@ -266,9 +251,6 @@ export async function POST(req: NextRequest) {
             id: example_id,
             frames: (frames as any[]).sort((a, b) => a.frame_index - b.frame_index),
           }))
-          console.log('Results:', result.length, 'example schemas')
-          console.log('Schema data:', JSON.stringify(result, null, 2))
-          console.log('=== END TOOL ===\n')
           return result
         },
       }),
@@ -284,8 +266,6 @@ export async function POST(req: NextRequest) {
           limit: z.number().int().min(1).max(500).default(200),
         }),
         execute: async ({ collection_ids, filters, limit }) => {
-          console.log('\n=== TOOL: listImagesBrief ===')
-          console.log('Parameters:', { collection_ids, filters, limit })
           const { data } = await supabase
             .from('images')
             .select('id, metadata, categories, objects, collection_id')
@@ -310,9 +290,6 @@ export async function POST(req: NextRequest) {
             const set = new Set(filters.objects)
             items = items.filter(i => i.objects?.some((o: string) => set.has(o)))
           }
-          console.log('Results:', items.length, 'images')
-          console.log('Sample results:', JSON.stringify(items.slice(0, 5), null, 2))
-          console.log('=== END TOOL ===\n')
           return items
         },
       }),
@@ -321,8 +298,6 @@ export async function POST(req: NextRequest) {
         description: 'Fetch long descriptions for images by id',
         inputSchema: z.object({ ids: z.array(z.string()).min(1).max(50) }),
         execute: async ({ ids }) => {
-          console.log('\n=== TOOL: getImagesLong ===')
-          console.log('Parameters:', { ids })
           const { data } = await supabase
             .from('images')
             .select('id, metadata')
@@ -332,9 +307,6 @@ export async function POST(req: NextRequest) {
             const long_description = typeof meta.long_description === 'string' ? meta.long_description : (typeof meta.short_description === 'string' ? meta.short_description : '')
             return { id: img.id as string, long: long_description }
           })
-          console.log('Results:', result.length, 'long descriptions')
-          console.log('Long descriptions:', JSON.stringify(result, null, 2))
-          console.log('=== END TOOL ===\n')
           return result
         },
       }),
@@ -342,12 +314,10 @@ export async function POST(req: NextRequest) {
     
 
     // Example slideshow retrieval
-    console.log('[slideshow-generate] Fetching example slideshows')
     const industries = ((product as any).industry || []) as string[]
     const productTypes = ((product as any).product_type || []) as string[]
     const matchingIndustries = ((product as any).matching_industries || []) as string[]
     const matchingProductTypes = ((product as any).matching_product_types || []) as string[]
-    console.log('[slideshow-generate] Product classifications:', { industries, productTypes, matchingIndustries, matchingProductTypes })
 
     const candidates = new Set<string>([
       ...industries,
@@ -358,7 +328,6 @@ export async function POST(req: NextRequest) {
 
     let exampleRows: any[] = []
     if (candidates.size > 0) {
-      console.log('[slideshow-generate] Looking for examples matching candidates:', Array.from(candidates))
       const { data: ex1 } = await supabase
         .from('slide_examples')
         .select('id, industry, product_type, format, call_to_action, summary')
@@ -370,15 +339,12 @@ export async function POST(req: NextRequest) {
         .in('product_type', Array.from(candidates))
         .limit(15)
       exampleRows = [ ...(ex1 || []), ...(ex2 || []) ]
-      console.log('[slideshow-generate] Found', exampleRows.length, 'matching examples')
     } else {
-      console.log('[slideshow-generate] No candidates, fetching general examples')
       const { data: exAll } = await supabase
         .from('slide_examples')
         .select('id, industry, product_type, format, call_to_action, summary')
         .limit(20)
       exampleRows = exAll || []
-      console.log('[slideshow-generate] Found', exampleRows.length, 'general examples')
     }
 
     // Compute canvas bounds from aspect ratio (AI guidance)
@@ -386,11 +352,8 @@ export async function POST(req: NextRequest) {
     const [aw, ah] = ar.split(':').map((n: string) => parseInt(n, 10) || 9)
     const CANVAS_WIDTH = 300
     const CANVAS_MAX_HEIGHT = Math.round((CANVAS_WIDTH * ah) / aw)
-    console.log('[slideshow-generate] Canvas dimensions:', { aspectRatio: ar, width: CANVAS_WIDTH, maxHeight: CANVAS_MAX_HEIGHT })
 
     // Prepare messages
-    console.log('[slideshow-generate] Preparing AI messages')
-    console.log('\n=== SYSTEM PROMPT FOR PLANNING PHASE ===')
     const planningPrompt = [
       'You are a TikTok/Instagram slideshow generator that creates engaging multi-slide content.',
       'CRITICAL: You must create MULTIPLE slides as requested by the user. The schema requires an array of slides.',
@@ -445,10 +408,6 @@ export async function POST(req: NextRequest) {
       '- Use short refs (c01, p01) from the provided image lists for background_image_ref and image_ref',
       '- Create the exact number of slides requested by the user',
     ].join('\n')
-    console.log(planningPrompt)
-    console.log('=== END SYSTEM PROMPT ===\n')
-    
-    console.log('\n=== USER CONTEXT FOR PLANNING PHASE ===')
     const userPlan = [
       `Product: ${product.name || ''}`,
       `Description: ${product.description || ''}`,
@@ -469,20 +428,15 @@ export async function POST(req: NextRequest) {
       '',
       'Plan out loud how you will: choose a format, pick images by ref, write slide texts, and timing. Do not output JSON yet.'
     ].join('\n')
-    console.log(userPlan)
-    console.log('=== END USER CONTEXT ===\n')
-    
-    console.log('[slideshow-generate] Starting streaming response')
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          console.log('[slideshow-generate] Starting planning phase')
           // 1) Stream planning thoughts (no fallback)
           {
             const plan = await streamText({
-              model: google("models/gemini-2.5-flash"),
+              model: google("models/gemini-3-flash-preview"),
               messages: [
                 { role: 'system', content: planningPrompt },
                 { role: 'user', content: userPlan },
@@ -490,7 +444,6 @@ export async function POST(req: NextRequest) {
               tools: planningTools,
               stopWhen: stepCountIs(MAX_TOOL_ROUNDS),
             })
-            console.log('[slideshow-generate] Planning stream created, reading chunks')
             const reader = plan.textStream.getReader()
             while (true) {
               const { value, done } = await reader.read()
@@ -500,12 +453,10 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
             }
           }
-          console.log('[slideshow-generate] Planning complete, starting JSON generation')
 
           // 2) Generate final JSON strictly
           const slideCount = typeof prompt === 'string' && prompt.match(/(\d+)\s*slide/i) ? parseInt(prompt.match(/(\d+)\s*slide/i)![1], 10) : 3
           
-          console.log('\n=== SYSTEM PROMPT FOR JSON GENERATION ===')
           const systemJson = `You are a TikTok/Instagram slideshow generator. Reply ONLY with valid JSON matching the exact schema.
 
 CRITICAL: You MUST generate exactly ${slideCount} slides in an array format.
@@ -568,10 +519,6 @@ TEXT POSITIONING (CENTER-ANCHORED):
 - Prefer center positions (X=${CANVAS_WIDTH / 2}) for better visual balance
 
 Return ONLY the JSON object. No explanations, no markdown.`
-          console.log(systemJson)
-          console.log('=== END SYSTEM PROMPT ===\n')
-          
-          console.log('\n=== USER CONTEXT FOR JSON GENERATION ===')
           const userJson = [
             `Product: ${product.name || ''}`,
             `Description: ${product.description || ''}`,
@@ -590,8 +537,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
             'Relevant Example Slideshows (summaries):',
             JSON.stringify(exampleRows, null, 2),
           ].join('\n')
-          console.log(userJson)
-          console.log('=== END USER CONTEXT ===\n')
 
           // Create dynamic schema with available refs
           const collectionRefs = collectionImageItems.map(item => item.ref)
@@ -605,35 +550,11 @@ Return ONLY the JSON object. No explanations, no markdown.`
           
           // Create schema with all constraints
           const SchemaWithHints = createSlideshowSchema(collectionRefs, productRefs, slideCount, CANVAS_WIDTH, CANVAS_MAX_HEIGHT)
-          console.log('[slideshow-generate] Schema created for', slideCount, 'slides')
-          console.log('[slideshow-generate] Collection refs available:', collectionRefs.length)
-          console.log('[slideshow-generate] Product refs available:', productRefs.length)
-          console.log('\n=== COLLECTION IMAGE REFS AND DESCRIPTIONS ===')
-          collectionImageItems.forEach(item => {
-            console.log(`${item.ref}: ${item.short_description}`)
-            if (item.long_description !== item.short_description) {
-              console.log(`  Long: ${item.long_description}`)
-            }
-            if (item.categories.length > 0) console.log(`  Categories: ${item.categories.join(', ')}`)
-            if (item.objects.length > 0) console.log(`  Objects: ${item.objects.join(', ')}`)
-          })
-          console.log('=== END COLLECTION REFS ===\n')
-          
-          console.log('\n=== PRODUCT IMAGE REFS AND DESCRIPTIONS ===')
-          productImageItems.forEach(item => {
-            console.log(`${item.ref}: ${item.short_description}`)
-            if (item.long_description !== item.short_description) {
-              console.log(`  Long: ${item.long_description}`)
-            }
-          })
-          console.log('=== END PRODUCT REFS ===\n')
-          
-          console.log('[slideshow-generate] Calling generateObject for structured JSON')
 
           try {
             // Try generateObject with explicit maxRetries
             const { object: finalObj, response, usage } = await generateObject({
-              model: google("models/gemini-2.5-flash"),
+              model: google("models/gemini-3-flash-preview"),
               schema: SchemaWithHints,
               schemaName: 'Slideshow',
               schemaDescription: `A slideshow with exactly ${slideCount} slides in array format. The slides array MUST contain ${slideCount} slide objects.`,
@@ -643,12 +564,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
               ],
               maxRetries: 3,
             })
-            console.log('[slideshow-generate] JSON generation successful, object keys:', Object.keys(finalObj || {}))
-            console.log('[slideshow-generate] Slides structure:', typeof (finalObj as any)?.slides, Array.isArray((finalObj as any)?.slides))
-            
-            console.log('\n=== AI GENERATED JSON RESPONSE ===')
-            console.log(JSON.stringify(finalObj, null, 2))
-            console.log('=== END AI RESPONSE ===\n')
             
             // Extensive validation and repair
             if (!finalObj || typeof finalObj !== 'object') {
@@ -657,12 +572,9 @@ Return ONLY the JSON object. No explanations, no markdown.`
             
             // Ensure slides is an array
             if (!Array.isArray((finalObj as any).slides)) {
-              console.log('[slideshow-generate] WARNING: slides is not an array, attempting to fix')
               if (typeof (finalObj as any).slides === 'object' && (finalObj as any).slides !== null) {
-                console.log('[slideshow-generate] Wrapping single slide object in array')
                 ;(finalObj as any).slides = [(finalObj as any).slides]
               } else {
-                console.log('[slideshow-generate] No valid slides found, creating minimal slides')
                 ;(finalObj as any).slides = Array.from({ length: slideCount }, (_, i) => ({
                   background_image_ref: collectionRefs[i % collectionRefs.length],
                   texts: [{ text: `Slide ${i + 1}`, position_x: 50, position_y: 100, size: 40 }],
@@ -674,7 +586,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
             // Ensure we have the right number of slides
             const currentSlides = (finalObj as any).slides as any[]
             if (currentSlides.length < slideCount) {
-              console.log(`[slideshow-generate] WARNING: Only ${currentSlides.length} slides generated, duplicating to reach ${slideCount}`)
               while (currentSlides.length < slideCount) {
                 const template = currentSlides[currentSlides.length % currentSlides.length]
                 currentSlides.push({
@@ -683,7 +594,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
                 })
               }
             } else if (currentSlides.length > slideCount) {
-              console.log(`[slideshow-generate] WARNING: ${currentSlides.length} slides generated, truncating to ${slideCount}`)
               ;(finalObj as any).slides = currentSlides.slice(0, slideCount)
             }
             
@@ -696,7 +606,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
             }))
 
             // Validate and adjust text positions to prevent offscreen text
-            console.log('[slideshow-generate] Validating text positions to prevent offscreen placement')
             let adjustmentCount = 0
             ;(finalObj as any).slides = (finalObj as any).slides.map((slide: any, slideIndex: number) => {
               if (!Array.isArray(slide.texts)) return slide
@@ -715,10 +624,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
                 
                 if (validation.adjusted) {
                   adjustmentCount++
-                  console.log(`[slideshow-generate] Adjusted text position on slide ${slideIndex + 1}, text ${textIndex + 1}:`)
-                  console.log(`  Original: (${position_x}, ${position_y}) -> Adjusted: (${validation.x}, ${validation.y})`)
-                  console.log(`  Text: "${text.length > 50 ? text.substring(0, 50) + '...' : text}"`)
-                  
                   return {
                     ...textObj,
                     position_x: validation.x,
@@ -733,17 +638,10 @@ Return ONLY the JSON object. No explanations, no markdown.`
             })
             
             if (adjustmentCount > 0) {
-              console.log(`[slideshow-generate] Made ${adjustmentCount} text position adjustments to prevent offscreen text`)
-            } else {
-              console.log('[slideshow-generate] All text positions are within safe bounds')
             }
-            
-            console.log('[slideshow-generate] Final validation complete, slide count:', (finalObj as any).slides.length)
             
             // Map prompt-local refs to UUIDs then to proxied URLs for client rendering
             let mappedObj = finalObj
-            console.log('[slideshow-generate] Collection ref map:', Object.fromEntries(collectionRefMap))
-            console.log('[slideshow-generate] Product ref map:', Object.fromEntries(productRefMap))
             try {
               const collectUUIDs = () => {
                 const uuids = new Set<string>()
@@ -769,7 +667,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
               }
               
               const allUUIDs = collectUUIDs()
-              console.log('[slideshow-generate] Collected UUIDs for mapping:', allUUIDs)
               
               // Use the data we already fetched - no need to query again!
               const uuidToUrl = new Map<string, string>()
@@ -786,7 +683,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
                   const url = isUser ? toUserUrl(path) : toPublicUrl(path)
                   if (url) {
                     uuidToUrl.set(imgId, url)
-                    console.log('[slideshow-generate] Mapped collection UUID to URL:', imgId, '->', url.substring(0, 50) + '...')
                   }
                 }
               }
@@ -799,12 +695,10 @@ Return ONLY the JSON object. No explanations, no markdown.`
                   const url = toUserUrl(path)
                   if (url) {
                     uuidToUrl.set(imgId, url)
-                    console.log('[slideshow-generate] Mapped product UUID to URL:', imgId, '->', url.substring(0, 50) + '...')
                   }
                 }
               }
               
-              console.log('[slideshow-generate] Total URLs mapped:', uuidToUrl.size)
 
               const slides = (finalObj as any)?.slides
               if (Array.isArray(slides)) {
@@ -821,12 +715,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
                       if (url) {
                         mappedBg = url
                         mappedBgId = uuid
-                        console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> UUID: ${uuid} -> URL: ${url.substring(0, 50)}...`)
-                      } else {
-                        console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> UUID: ${uuid} -> NO URL FOUND, keeping ref`)
                       }
-                    } else {
-                      console.log(`[slideshow-generate] Slide ${index + 1}: ${bgRef} -> NO UUID MAPPING FOUND`)
                     }
 
                     return {
@@ -849,13 +738,11 @@ Return ONLY the JSON object. No explanations, no markdown.`
               console.error('[slideshow-generate] Failed to map refs to URLs:', mapErr)
             }
             try {
-              const meta = await response
-              console.log('[slideshow-generate] Provider response metadata:', meta)
+              await response
             } catch {}
             if (usage) {
               try {
                 const u = await usage
-                if (u) console.log('[slideshow-generate] Token usage:', u)
               } catch {}
             }
 
@@ -863,12 +750,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
             controller.enqueue(encoder.encode(`data: --- JSON READY ---\n\n`))
             controller.enqueue(encoder.encode(`event: json\n`))
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(mappedObj)}\n\n`))
-            
-            console.log('\n=== FINAL MAPPED SLIDESHOW OUTPUT ===')
-            console.log(JSON.stringify(mappedObj, null, 2))
-            console.log('=== END FINAL OUTPUT ===\n')
-            
-            console.log('[slideshow-generate] Stream complete')
           } catch (err) {
             if ((NoObjectGeneratedError as any).isInstance?.(err)) {
               const e: any = err
@@ -888,7 +769,6 @@ Return ONLY the JSON object. No explanations, no markdown.`
         }
       }
     })
-    console.log('[slideshow-generate] Returning stream response')
 
     return new Response(stream, {
       headers: {

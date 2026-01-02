@@ -520,10 +520,8 @@ export default function SlideshowEditor() {
     const handleSlideChange = async () => {
       // Only trigger if we actually changed slides and have unsaved changes
       if (previousSlideId && previousSlideId !== selectedSlideId && hasUnsavedChanges && previousSlideRef.current) {
-        console.log('Auto-saving previous slide due to slide change...', previousSlideId);
         try {
           await autoSaveSlide(previousSlideId, previousSlideRef.current);
-          console.log('Auto-save completed successfully');
         } catch (error) {
           console.error('Auto-save failed:', error);
         }
@@ -1205,10 +1203,8 @@ export default function SlideshowEditor() {
     if (isEditorCleared) setIsEditorCleared(false);
     // Auto-save current slide if it has unsaved changes before switching
     if (hasUnsavedChanges && selectedSlideId && currentSlide && selectedSlideId !== slideId) {
-      console.log('Auto-saving before slide selection...');
       try {
         await autoSaveSlide(selectedSlideId, currentSlide);
-        console.log('Pre-selection auto-save completed');
         // Clear unsaved changes after successful save
         setHasUnsavedChanges(false);
       } catch (error) {
@@ -1392,7 +1388,6 @@ export default function SlideshowEditor() {
     // Perform database operations in the background
     try {
       await deleteSlide(slideId);
-      console.log('Slide deleted successfully');
     } catch (error) {
       console.error('Error deleting slide:', error);
       // Restore the slide if database operation failed
@@ -1424,7 +1419,6 @@ export default function SlideshowEditor() {
       });
 
       await updateSlideDuration(currentSlide.id, nextDuration);
-      console.log(`Slide duration updated to ${nextDuration}s`);
     } catch (error) {
       console.error('Error updating slide duration:', error);
       // Revert local state if database update failed
@@ -1679,7 +1673,6 @@ export default function SlideshowEditor() {
         await updateSlideBackground(selectedSlideId, imageId);
       }
 
-      console.log('Background image updated successfully');
     } catch (error) {
       console.error('Failed to update background image:', error);
       // Revert local state if database update failed
@@ -1700,7 +1693,6 @@ export default function SlideshowEditor() {
     const isPublic = imageUrl.includes('/public-images/');
     if (!isPublic && isProductImage) {
       // Otherwise, if this is a product image, copy it to the images table first
-      console.log('[SlideshowEditor] Copying product image for overlay:', imageId);
       const { image, error } = await copyProductImageForOverlay(imageId);
       if (error) {
         console.error('[SlideshowEditor] Failed to copy product image:', error);
@@ -1709,7 +1701,6 @@ export default function SlideshowEditor() {
       }
       if (image) {
         finalImageId = image.id;
-        console.log('[SlideshowEditor] Product image copied successfully, new ID:', finalImageId);
       }
     }
 
@@ -1822,15 +1813,8 @@ export default function SlideshowEditor() {
   // Auto-save function that can save any slide's data
   const autoSaveSlide = async (slideId: string, slideData: Slide, silent: boolean = true) => {
     if (!slideId || !slideData) {
-      console.log('Auto-save skipped: missing slideId or slideData');
       return;
     }
-
-    console.log('Auto-save starting for slide:', slideId, {
-      textsCount: slideData.texts?.length || 0,
-      overlaysCount: slideData.overlays?.length || 0,
-      silent
-    });
 
     try {
       if (!silent) setIsSaving(true);
@@ -1841,10 +1825,6 @@ export default function SlideshowEditor() {
         saveSlideOverlays(slideId, slideData.overlays || [])
       ]);
       
-      console.log('Auto-save completed successfully for slide:', slideId);
-      if (!silent) {
-        console.log('Slide auto-saved successfully');
-      }
     } catch (error) {
       console.error('Failed to auto-save slide:', slideId, error);
       // Don't show alert for auto-save failures to avoid interrupting user flow
@@ -1866,7 +1846,6 @@ export default function SlideshowEditor() {
       // Mark as saved
       setHasUnsavedChanges(false);
       
-      console.log('Slide saved successfully');
     } catch (error) {
       console.error('Failed to save slide:', error);
       toast.error('Failed to save slide. Please try again.');
@@ -2018,7 +1997,6 @@ export default function SlideshowEditor() {
   // Auto-close modal if the slideshow being previewed gets deleted
   useEffect(() => {
     if (isPreviewOpen && previewSlideshowId && deletingSlideshowId === previewSlideshowId) {
-      console.log('Slideshow being previewed was deleted, closing modal');
       setIsPreviewOpen(false);
       setPreviewSlideshowId(null);
       setPreviewImages([]);
@@ -2202,7 +2180,6 @@ export default function SlideshowEditor() {
                         
                         // Don't open modal if we're currently deleting a slideshow
                         if (deletingSlideshowId) {
-                          console.log('Slideshow deletion in progress, skipping modal open');
                           return;
                         }
                         
@@ -2283,7 +2260,6 @@ export default function SlideshowEditor() {
                               onClick={async () => {
                                 // Auto-save current slide if it has unsaved changes before switching slideshows
                                 if (hasUnsavedChanges && selectedSlideId && currentSlide) {
-                                  console.log('Auto-saving before switching slideshows...');
                                   try {
                                     await autoSaveSlide(selectedSlideId, currentSlide);
                                   } catch (err) {

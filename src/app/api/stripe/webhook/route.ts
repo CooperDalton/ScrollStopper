@@ -68,6 +68,11 @@ export async function POST(request: NextRequest) {
         if (userId) {
           const status = sub.status
           const role = status === 'active' || status === 'trialing' ? 'pro' : 'free'
+          
+          // Flexible billing / new API version compatibility
+          const isCanceling = Boolean(sub.cancel_at_period_end || (sub.cancel_at && sub.cancel_at > Math.floor(Date.now() / 1000)));
+          const currentPeriodEndTimestamp = sub.current_period_end ?? sub.items.data[0]?.current_period_end;
+
           await supabase
             .from('users')
             .upsert(
@@ -77,7 +82,10 @@ export async function POST(request: NextRequest) {
                 stripe_customer_id: sub.customer as string | null,
                 stripe_subscription_status: status,
                 stripe_price_id: priceId,
-                current_period_end: (sub as any).current_period_end ? new Date((sub as any).current_period_end * 1000).toISOString() : null,
+                stripe_cancel_at_period_end: isCanceling,
+                current_period_end: currentPeriodEndTimestamp
+                  ? new Date(currentPeriodEndTimestamp * 1000).toISOString()
+                  : null,
               },
               { onConflict: 'id' }
             )
@@ -88,6 +96,7 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         const userId = (sub.metadata?.userId as string) || undefined
         if (userId) {
+          const currentPeriodEndTimestamp = sub.current_period_end ?? sub.items.data[0]?.current_period_end;
           await supabase
             .from('users')
             .upsert(
@@ -95,7 +104,9 @@ export async function POST(request: NextRequest) {
                 id: userId,
                 role: 'free',
                 stripe_subscription_status: 'canceled',
-                current_period_end: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+                stripe_cancel_at_period_end: false,
+                current_period_end: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : 
+                                   (currentPeriodEndTimestamp ? new Date(currentPeriodEndTimestamp * 1000).toISOString() : null),
               },
               { onConflict: 'id' }
             )

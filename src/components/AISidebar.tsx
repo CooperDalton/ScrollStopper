@@ -171,7 +171,7 @@ export default function AISidebar({
         {lastUsedPrompt && (
           <div className="mt-2 flex items-center gap-2">
             <div className="flex-1 text-xs text-[var(--color-text-muted)] truncate">
-              Last used: &ldquo;{lastUsedPrompt.length > 30 ? lastUsedPrompt.slice(0, 30) + '...' : lastUsedPrompt}&rdquo;
+              Last used prompt: &ldquo;{lastUsedPrompt.length > 30 ? lastUsedPrompt.slice(0, 30) + '...' : lastUsedPrompt}&rdquo;
             </div>
             <button
               type="button"

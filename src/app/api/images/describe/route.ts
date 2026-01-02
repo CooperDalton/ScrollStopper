@@ -65,8 +65,6 @@ export async function POST(req: NextRequest) {
     }
 
     const signedUrl = signed.signedUrl
-
-    console.log('AI describe using signed URL for image:', imageId)
     // Optional reachability check (helps catch bad URLs early)
     try {
       const head = await fetch(signedUrl, { method: 'HEAD' })
@@ -153,7 +151,6 @@ Be factual. Do not mention watermarks. Do not include brand names unless clearly
       return NextResponse.json({ error: 'Failed to update image metadata' }, { status: 500 })
     }
 
-    console.log('AI image describe result saved for image:', imageId)
     return NextResponse.json({
       ...object,
       categories: normalizedCategories,

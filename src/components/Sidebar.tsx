@@ -65,11 +65,36 @@ export default function Sidebar() {
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
+      // 1. Try local storage first
+      try {
+        const cached = localStorage.getItem('subscription_status');
+        if (cached) {
+          const { isSubscribed: cachedStatus, timestamp } = JSON.parse(cached);
+          // Use cached value immediately
+          if (isMounted) setIsSubscribed(cachedStatus);
+          
+          // If cache is fresh (less than 5 minutes old), skip fetch
+          if (Date.now() - timestamp < 1000 * 60 * 5) {
+            return;
+          }
+        }
+      } catch {}
+
+      // 2. Fetch from API if needed
       try {
         const res = await fetch('/api/billing/status', { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
-        if (isMounted) setIsSubscribed(Boolean(data?.isSubscribed));
+        const status = Boolean(data?.isSubscribed);
+        
+        if (isMounted) {
+          setIsSubscribed(status);
+          // Update cache
+          localStorage.setItem('subscription_status', JSON.stringify({
+            isSubscribed: status,
+            timestamp: Date.now()
+          }));
+        }
       } catch {}
     };
     load();

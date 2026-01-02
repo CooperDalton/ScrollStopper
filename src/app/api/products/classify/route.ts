@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     ].join('\n')
 
     const { object: classified } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-3-flash-preview'),
       schema: classificationSchema,
       prompt: classificationPrompt,
     })
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       ].join('\n')
 
       const { object: matching } = await generateObject({
-        model: google('gemini-2.5-flash'),
+        model: google('gemini-3-flash-preview'),
         schema: matchingSchema,
         prompt: matchingPrompt,
       })

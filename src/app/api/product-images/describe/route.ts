@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createServerSupabaseClient()
-    console.log('[api:product-images/describe] request body imageId=', imageId, 'imageUrl=', imageUrl)
 
     // Primary: look up the product image to get the storage path
     let storagePath: string | undefined
@@ -30,7 +29,6 @@ export async function POST(req: NextRequest) {
         .eq('id', imageId)
         .single()
 
-      console.log('[api:product-images/describe] fetched product_images row:', { err: imageFetchError, found: !!imageRow })
       if (!imageFetchError && imageRow) {
         storagePath = (imageRow as any).storage_path
       }
@@ -63,7 +61,6 @@ export async function POST(req: NextRequest) {
 
     const signedUrl = signed.signedUrl
 
-    console.log('AI describe (product image) using signed URL for image:', imageId)
     // Optional reachability check (helps catch bad URLs early)
     try {
       const head = await fetch(signedUrl, { method: 'HEAD' })
@@ -97,7 +94,6 @@ Be factual. Do not mention watermarks. Do not include brand names unless clearly
     })
 
     const description = (text || '').trim()
-    console.log('[api:product-images/describe] model returned description len=', description.length)
 
     // Persist AI description on server under authenticated user
     const { data: updateData, error: updateError } = await supabase
@@ -112,10 +108,8 @@ Be factual. Do not mention watermarks. Do not include brand names unless clearly
       return NextResponse.json({ error: 'Failed to update product image description' }, { status: 500 })
     }
 
-    console.log('AI product image description saved for image:', imageId, 'row:', updateData)
     return NextResponse.json({ description })
   } catch (err) {
-    console.error('AI product image describe error:', err)
     const message = err instanceof Error ? err.message : String(err)
     const stack = err instanceof Error ? err.stack : undefined
     return NextResponse.json(
