@@ -56,8 +56,8 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({
         ok: true,
         alreadyActive: true,
-        currentPeriodEnd: (subscription as any).current_period_end
-          ? new Date((subscription as any).current_period_end * 1000).toISOString()
+        currentPeriodEnd: subscription.items.data[0]?.current_period_end
+          ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
           : null,
       });
     }
@@ -69,8 +69,8 @@ export async function POST(_request: NextRequest) {
     return NextResponse.json({
       ok: true,
       alreadyActive: false,
-      currentPeriodEnd: (updated as any).current_period_end
-        ? new Date((updated as any).current_period_end * 1000).toISOString()
+      currentPeriodEnd: updated.items.data[0]?.current_period_end
+        ? new Date(updated.items.data[0].current_period_end * 1000).toISOString()
         : null,
     });
   } catch (err) {

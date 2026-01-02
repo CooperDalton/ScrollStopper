@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
           
           // Flexible billing / new API version compatibility
           const isCanceling = Boolean(sub.cancel_at_period_end || (sub.cancel_at && sub.cancel_at > Math.floor(Date.now() / 1000)));
-          const currentPeriodEndTimestamp = sub.current_period_end ?? sub.items.data[0]?.current_period_end;
+          const currentPeriodEndTimestamp = sub.items.data[0]?.current_period_end;
 
           await supabase
             .from('users')
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription
         const userId = (sub.metadata?.userId as string) || undefined
         if (userId) {
-          const currentPeriodEndTimestamp = sub.current_period_end ?? sub.items.data[0]?.current_period_end;
+          const currentPeriodEndTimestamp = sub.items.data[0]?.current_period_end;
           await supabase
             .from('users')
             .upsert(

@@ -55,7 +55,7 @@ export async function GET(_request: NextRequest) {
         console.log(`[Stripe Subscription] Found ${status} subscription:`, {
             id: subscription.id,
             cancel_at_period_end: subscription.cancel_at_period_end,
-            current_period_end: subscription.current_period_end,
+            current_period_end: subscription.items.data[0]?.current_period_end,
             status: subscription.status
         });
         break;
@@ -73,7 +73,7 @@ export async function GET(_request: NextRequest) {
       const isCanceling = Boolean(subscription.cancel_at_period_end || (subscription.cancel_at && subscription.cancel_at > Math.floor(Date.now() / 1000)));
 
       // Get current period end - check root first, then items (flexible billing fallback)
-      const currentPeriodEndTimestamp = subscription.current_period_end ?? subscription.items.data[0]?.current_period_end;
+      const currentPeriodEndTimestamp = subscription.items.data[0]?.current_period_end;
       const currentPeriodEnd = currentPeriodEndTimestamp 
         ? new Date(currentPeriodEndTimestamp * 1000).toISOString() 
         : null;
@@ -102,7 +102,7 @@ export async function GET(_request: NextRequest) {
       const canceledList = await stripe.subscriptions.list({ customer: customerId, status: 'canceled', limit: 1 });
       const canceled = canceledList.data[0] || null;
       
-      const canceledPeriodEndTimestamp = canceled?.current_period_end ?? canceled?.items.data[0]?.current_period_end;
+      const canceledPeriodEndTimestamp = canceled?.items.data[0]?.current_period_end;
       
       return NextResponse.json({
         hasCustomer: true,
@@ -116,7 +116,7 @@ export async function GET(_request: NextRequest) {
       });
     }
 
-    const currentPeriodEndTimestamp = subscription.current_period_end ?? subscription.items.data[0]?.current_period_end;
+    const currentPeriodEndTimestamp = subscription.items.data[0]?.current_period_end;
     const isCanceling = Boolean(subscription.cancel_at_period_end || (subscription.cancel_at && subscription.cancel_at > Math.floor(Date.now() / 1000)));
 
     return NextResponse.json({
