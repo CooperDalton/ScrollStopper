@@ -1,20 +1,94 @@
-'use client';
-
-import React from 'react';
 import SettingsLayout from '@/components/SettingsLayout';
+import UsageProgressBar from '@/components/UsageProgressBar';
+import CancelSubscriptionCard from '@/components/CancelSubscriptionCard';
+import LogoutButton from '@/components/LogoutButton';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { subscriptionTiers } from '@/data/subscriptionTiers';
 
-export default function SettingsHomePage() {
+export default async function SettingsPage() {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return (
+      <SettingsLayout>
+        <div className="flex-1 p-8">
+          <div className="max-w-4xl mx-auto space-y-8">
+            <div className="flex justify-between items-center">
+              <h1 className="text-3xl font-bold text-[var(--color-text)]">Settings</h1>
+              <LogoutButton variant="minimal" />
+            </div>
+            <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-8 text-[var(--color-text)]">
+              Please sign in to view your settings.
+            </div>
+          </div>
+        </div>
+      </SettingsLayout>
+    );
+  }
+
+  // Period start: first day of current month (YYYY-MM-DD)
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  // Determine tier for limits
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role, stripe_subscription_status')
+    .eq('id', user.id)
+    .single();
+  const isSubscribed =
+    profile?.role === 'pro' ||
+    (profile?.stripe_subscription_status === 'active' || profile?.stripe_subscription_status === 'trialing');
+  const tier = isSubscribed ? subscriptionTiers.Pro : subscriptionTiers.Free;
+
+  // Slideshows this cycle (aligned with usage counters)
+  // Use usage_counters 'slideshows' metric for current cycle instead of calendar month
+  let createdThisCycle = 0;
+
+  // AI generations this month (usage_counters)
+  const { data: usageRows } = await supabase
+    .from('usage_counters')
+    .select('metric, used, period_start, period_end')
+    .eq('user_id', user.id)
+    .lte('period_start', today)
+    .gte('period_end', today);
+
+  const usedGenerations = usageRows?.find((r) => r.metric === 'ai_generations')?.used ?? 0;
+  const usedSlidesCounter = usageRows?.find((r) => r.metric === 'slideshows')?.used ?? 0;
+  createdThisCycle = usedSlidesCounter;
+
+  const remainingSlides = Math.max(0, tier.maxNumberOfSlideshows - usedSlidesCounter);
+  const remainingAIGenerations = Math.max(0, tier.maxNumberOfAIGenerations - usedGenerations);
+
   return (
     <SettingsLayout>
       <div className="flex-1 p-8">
         <div className="max-w-4xl mx-auto space-y-8">
-          <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-8">
-            <h1 className="text-3xl font-bold text-[var(--color-text)] mb-4">Welcome to Settings</h1>
-            <p className="text-[var(--color-text-muted)] mb-6">
-              Use the sidebar to navigate between different settings sections.
-            </p>
-            <div className="text-sm text-[var(--color-text-muted)]">
-              Select an option from the settings menu to get started.
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-[var(--color-text)]">Settings</h1>
+            <LogoutButton variant="minimal" />
+          </div>
+
+          <CancelSubscriptionCard />
+
+          <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
+            <h2 className="text-lg font-semibold text-[var(--color-text)] mb-4">Plan limits</h2>
+            <div className="space-y-4">
+              <UsageProgressBar
+                current={usedSlidesCounter}
+                max={tier.maxNumberOfSlideshows}
+                label="Slideshows this cycle"
+                remaining={remainingSlides}
+              />
+              <UsageProgressBar
+                current={usedGenerations}
+                max={tier.maxNumberOfAIGenerations}
+                label="AI generations this cycle"
+                remaining={remainingAIGenerations}
+              />
             </div>
           </div>
         </div>
@@ -22,5 +96,3 @@ export default function SettingsHomePage() {
     </SettingsLayout>
   );
 }
-
-

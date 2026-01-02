@@ -63,6 +63,21 @@ const Header = () => {
     }
   };
 
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      const headerOffset = 80; // Account for fixed header
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
+    setIsMenuOpen(false); // Close mobile menu after clicking
+  };
+
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-[var(--color-border)] fixed top-0 left-0 right-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -79,18 +94,24 @@ const Header = () => {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+            <button 
+              onClick={() => scrollToSection('home')} 
+              className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+            >
               Home
-            </Link>
-            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+            </button>
+            <button 
+              onClick={() => scrollToSection('features')} 
+              className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+            >
               Features
-            </Link>
-            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+            </button>
+            <button 
+              onClick={() => scrollToSection('pricing')} 
+              className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+            >
               Pricing
-            </Link>
-            <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
-              About
-            </Link>
+            </button>
           </nav>
 
           {/* Auth Section */}
@@ -127,18 +148,24 @@ const Header = () => {
         {isMenuOpen && (
           <div className="md:hidden pb-4 border-t border-[var(--color-border)] mt-4">
             <nav className="flex flex-col space-y-4 pt-4">
-              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              <button 
+                onClick={() => scrollToSection('home')} 
+                className="text-left text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
                 Home
-              </Link>
-              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              </button>
+              <button 
+                onClick={() => scrollToSection('features')} 
+                className="text-left text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
                 Features
-              </Link>
-              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
+              </button>
+              <button 
+                onClick={() => scrollToSection('pricing')} 
+                className="text-left text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
                 Pricing
-              </Link>
-              <Link href="#" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">
-                About
-              </Link>
+              </button>
               <div className="flex flex-col space-y-2 pt-4">
                 {loading ? (
                   <div className="w-8 h-8 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent mx-auto"></div>
@@ -249,7 +276,7 @@ const HeroSection = () => (
 
 // Features Section
 const FeaturesSection = () => (
-  <section className="py-20 bg-white">
+  <section id="features" className="py-20 bg-white">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-16">
         <h2 className="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
@@ -320,7 +347,7 @@ const FeaturesSection = () => (
 
 // Pricing Section
 const PricingSection = () => (
-  <section className="py-20 bg-gradient-to-br from-gray-50 to-white">
+  <section id="pricing" className="py-20 bg-gradient-to-br from-gray-50 to-white">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-12">
         <h2 className="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-6">
