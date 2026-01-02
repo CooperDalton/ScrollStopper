@@ -3,13 +3,27 @@
 import { useEffect, useState } from 'react';
 import { toastPromise } from '@/lib/toast';
 
-export default function CancelSubscriptionCard() {
-  const [loading, setLoading] = useState(true);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+interface CancelSubscriptionCardProps {
+  initialIsSubscribed: boolean;
+  initialCancelAtPeriodEnd: boolean;
+  initialCurrentPeriodEnd: string | null;
+  initialStatus: string | null;
+}
+
+export default function CancelSubscriptionCard({
+  initialIsSubscribed,
+  initialCancelAtPeriodEnd,
+  initialCurrentPeriodEnd,
+  initialStatus,
+}: CancelSubscriptionCardProps) {
+  const [loading, setLoading] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(initialIsSubscribed);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
-  const [cancellationScheduledFor, setCancellationScheduledFor] = useState<string | null>(null);
-  const [alreadyCanceled, setAlreadyCanceled] = useState(false);
+  const [cancellationScheduledFor, setCancellationScheduledFor] = useState<string | null>(
+    initialCancelAtPeriodEnd ? initialCurrentPeriodEnd : null
+  );
+  const [alreadyCanceled, setAlreadyCanceled] = useState(initialStatus === 'canceled');
 
   useEffect(() => {
     let isMounted = true;

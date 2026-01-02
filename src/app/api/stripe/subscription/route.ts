@@ -130,6 +130,14 @@ export async function GET(_request: NextRequest) {
       canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
     });
   } catch (err) {
+    // Handle "resource_missing" (Customer not found in this env) gracefully
+    // by returning 404, which the client will treat as a fetch failure 
+    // and fallback to the database state (which is what we want for mixed-env setups).
+    if (err instanceof Stripe.errors.StripeError && err.code === 'resource_missing') {
+        console.warn('[Stripe Subscription] Customer not found in this environment.');
+        return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+    }
+
     console.error('Stripe subscription status error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }

@@ -36,7 +36,7 @@ export default async function SettingsPage() {
   // Determine tier for limits
   const { data: profile } = await supabase
     .from('users')
-    .select('role, stripe_subscription_status')
+    .select('role, stripe_subscription_status, stripe_cancel_at_period_end, current_period_end')
     .eq('id', user.id)
     .single();
   const isSubscribed =
@@ -72,7 +72,12 @@ export default async function SettingsPage() {
             <LogoutButton variant="minimal" />
           </div>
 
-          <CancelSubscriptionCard />
+          <CancelSubscriptionCard 
+            initialIsSubscribed={isSubscribed}
+            initialCancelAtPeriodEnd={profile?.stripe_cancel_at_period_end ?? false}
+            initialCurrentPeriodEnd={profile?.current_period_end ?? null}
+            initialStatus={profile?.stripe_subscription_status ?? null}
+          />
 
           <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6">
             <h2 className="text-lg font-semibold text-[var(--color-text)] mb-4">Plan limits</h2>
