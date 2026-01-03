@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
@@ -18,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const syncedUserId = useRef<string | null>(null)
 
   const insertUserToDB = async (userData: User) => {
     try {
@@ -61,7 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false)
         
         if (event === 'SIGNED_IN' && session?.user) {
-          await insertUserToDB(session.user)
+          // Prevent running on every tab focus/session check if already synced
+          if (syncedUserId.current !== session.user.id) {
+            syncedUserId.current = session.user.id
+            await insertUserToDB(session.user)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          syncedUserId.current = null
         }
       }
     )

@@ -122,8 +122,33 @@ export async function deleteCollection(id: string) {
       .select('*')
       .eq('collection_id', id)
 
-    // Best-effort: delete files from storage first
     if (images && images.length > 0) {
+      const imageIds = images.map(img => img.id)
+
+      // Before deleting images, handle slide references
+      // 1. Delete slide overlay references to any of these images
+      const { error: overlaysDeleteError } = await supabase
+        .from('slide_overlays')
+        .delete()
+        .in('image_id', imageIds)
+
+      if (overlaysDeleteError) {
+        console.warn('Error deleting slide overlays during collection delete:', overlaysDeleteError)
+        // Continue anyway - try to clean up what we can
+      }
+
+      // 2. Set background_image_id to NULL for slides using any of these images as background
+      const { error: backgroundUpdateError } = await supabase
+        .from('slides')
+        .update({ background_image_id: null })
+        .in('background_image_id', imageIds)
+
+      if (backgroundUpdateError) {
+        console.warn('Error updating slide backgrounds during collection delete:', backgroundUpdateError)
+        // Continue anyway - try to clean up what we can
+      }
+
+      // Best-effort: delete files from storage
       const filePaths = images
         .map(img => (img as any).storage_path || (img as any).file_path)
         .filter(Boolean) as string[]
@@ -136,6 +161,7 @@ export async function deleteCollection(id: string) {
           console.warn('Storage remove error during collection delete:', storageError)
         }
       }
+
       // Remove image rows explicitly to avoid FK restrictions if cascade is not configured
       const { error: imagesDeleteError } = await supabase
         .from('images')
@@ -264,13 +290,39 @@ export async function deleteImage(imageId: string) {
 
     if (fetchError) throw fetchError
 
+    // Before deleting the image, handle slide references
+    // 1. Delete slide overlay references to this image
+    const { error: overlaysDeleteError } = await supabase
+      .from('slide_overlays')
+      .delete()
+      .eq('image_id', imageId)
+
+    if (overlaysDeleteError) {
+      console.warn('Error deleting slide overlays:', overlaysDeleteError)
+      // Continue anyway - try to clean up what we can
+    }
+
+    // 2. Set background_image_id to NULL for slides using this image as background
+    const { error: backgroundUpdateError } = await supabase
+      .from('slides')
+      .update({ background_image_id: null })
+      .eq('background_image_id', imageId)
+
+    if (backgroundUpdateError) {
+      console.warn('Error updating slide backgrounds:', backgroundUpdateError)
+      // Continue anyway - try to clean up what we can
+    }
+
     // Delete from storage
     const path = (image as any).storage_path || (image as any).file_path
     const { error: storageError } = await supabase.storage
       .from('user-images')
       .remove([path])
 
-    if (storageError) throw storageError
+    if (storageError) {
+      console.warn('Storage remove error during image delete:', storageError)
+      // Continue to delete DB record even if storage fails
+    }
 
     // Delete from database
     const { error: dbError } = await supabase
