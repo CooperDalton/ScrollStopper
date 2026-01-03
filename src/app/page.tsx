@@ -200,13 +200,6 @@ const HeroSection = () => (
       <div className="grid lg:grid-cols-2 gap-12 items-center">
         {/* Left Column - Text Content */}
         <div className="space-y-8">
-          {/* Badge */}
-          <div className="inline-flex items-center px-4 py-2 bg-gradient-light rounded-full border border-[var(--color-primary)]/20">
-            <SparklesIcon />
-            <span className="ml-2 text-sm font-medium text-[var(--color-primary)]">
-              Next-Gen AI Automation
-            </span>
-          </div>
 
                      {/* Main Headline */}
            <div className="space-y-6">
@@ -218,9 +211,6 @@ const HeroSection = () => (
              <div className="space-y-4">
                <p className="text-xl text-[var(--color-text-muted)] max-w-lg leading-relaxed">
                  Spend less time marketing and more time building.
-               </p>
-               <p className="text-lg text-[var(--color-text-muted)] max-w-lg">
-                 Built for founders who would rather ship than sell.
                </p>
              </div>
            </div>
@@ -309,11 +299,10 @@ const CopyContent = () => {
         </div>
       </section>
 
-      {/* THE PROMISE */}
+      {/* THE PROMISE + HOW IT WORKS */}
       <section className={`${sectionClass} bg-[var(--color-bg-secondary)]`}>
         <div className={containerClass}>
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-[var(--color-primary)]">The Promise</h3>
             <p className={headingClass}>
               So this does one thing:
             </p>
@@ -322,21 +311,14 @@ const CopyContent = () => {
             It turns your product into daily short-form content<br className="hidden md:block"/>
             without you thinking about it.
           </p>
-        </div>
-      </section>
 
-      {/* HOW IT WORKS */}
-      <section className={sectionClass}>
-        <div className={containerClass}>
-          <h3 className="text-lg font-medium text-[var(--color-primary)]">How It Works</h3>
-          
-          <div className="grid gap-8 md:grid-cols-3 text-left">
+          <div className="grid gap-8 md:grid-cols-3 text-left pt-12">
             {[
               { step: "01", text: "Upload screenshots." },
               { step: "02", text: "Describe your product once." },
               { step: "03", text: "AI generates content designed to get views." }
             ].map((item, i) => (
-              <div key={i} className="p-8 rounded-3xl bg-[var(--color-bg-secondary)] hover:scale-105 transition-transform duration-300">
+              <div key={i} className="p-8 rounded-3xl bg-[var(--color-bg)] hover:scale-105 transition-transform duration-300 shadow-sm">
                 <div className="text-5xl font-bold text-[var(--color-primary)]/20 mb-4">{item.step}</div>
                 <p className="text-xl font-bold text-[var(--color-text)]">{item.text}</p>
               </div>
@@ -346,24 +328,29 @@ const CopyContent = () => {
       </section>
 
       {/* THE TONE CHECK */}
-      <section className="py-24 px-4 bg-[var(--color-text)] text-[var(--color-bg)]">
-        <div className={containerClass}>
-          <h3 className="text-lg font-medium text-[var(--color-primary)]">The Vibe</h3>
+      <section className="py-24 px-4 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] relative overflow-hidden">
+        <div className="max-w-4xl mx-auto relative z-10">
+          <div className="text-center mb-12">
+            <span className="inline-block px-4 py-1.5 rounded-full border border-purple-200 bg-white text-sm font-medium text-purple-600 shadow-sm">
+              The Vibe Check
+            </span>
+          </div>
           
-          <div className="grid md:grid-cols-3 gap-12 text-center">
-            <div className="space-y-2">
-              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Is it art?</p>
-              <p className="text-3xl font-bold">No.</p>
+          <div className="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-purple-100 border border-purple-100 rounded-2xl bg-white shadow-xl shadow-purple-900/5">
+            <div className="p-8 text-center">
+              <p className="text-gray-500 mb-3 text-sm uppercase tracking-wide font-medium">Is it art?</p>
+              <p className="text-4xl font-bold text-gray-900">No.</p>
             </div>
             
-            <div className="space-y-2">
-              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Is it vibe marketing?</p>
-              <p className="text-3xl font-bold text-[var(--color-primary)]">Absolutely.</p>
+            <div className="p-8 text-center relative overflow-hidden group">
+              <div className="absolute inset-0 bg-purple-50 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <p className="text-purple-600/70 mb-3 text-sm uppercase tracking-wide font-medium relative z-10">Is it vibe marketing?</p>
+              <p className="text-4xl font-bold text-purple-600 relative z-10">Absolutely.</p>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Does the algorithm care?</p>
-              <p className="text-3xl font-bold">Also no.</p>
+            <div className="p-8 text-center">
+              <p className="text-gray-500 mb-3 text-sm uppercase tracking-wide font-medium">Does the algorithm care?</p>
+              <p className="text-4xl font-bold text-gray-900">Also no.</p>
             </div>
           </div>
         </div>
@@ -408,18 +395,18 @@ const CopyContent = () => {
           <h2 className={headingClass}>Who is this for?</h2>
           
           <div className="flex flex-col items-center space-y-6">
-            <p className="text-xl text-[var(--color-text-muted)]">If you prioritize:</p>
-            <div className="space-y-4 w-full max-w-md">
+            <p className="text-xl text-[var(--color-text-muted)]">If you...</p>
+            <div className="space-y-6 w-full max-w-lg text-left">
               {[
-                "shipping more than posting",
-                "results more than aesthetics",
-                "leverage more than effort"
+                "keep telling yourself “I’ll market after this next feature”",
+                "hate how much content seems to matter now",
+                "just want your product to get seen"
               ].map((item, i) => (
-                <div key={i} className="flex items-center space-x-4 p-4 rounded-2xl border border-[var(--color-border)]">
-                  <div className="w-6 h-6 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
+                <div key={i} className="flex items-start space-x-4">
+                  <div className="flex-shrink-0 mt-1 w-6 h-6 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   </div>
-                  <span className="text-lg font-medium text-[var(--color-text)]">{item}</span>
+                  <span className="text-lg font-medium text-[var(--color-text)] leading-relaxed">{item}</span>
                 </div>
               ))}
             </div>
@@ -427,21 +414,6 @@ const CopyContent = () => {
           </div>
         </div>
       </section>
-
-      {/* CLOSING CTA (User removed it, but adding a minimal one bridges the gap) */}
-      <section className="py-24 px-4 bg-[var(--color-text)] text-[var(--color-bg)] text-center">
-         <div className="max-w-3xl mx-auto space-y-8">
-           <h2 className="text-4xl md:text-6xl font-bold tracking-tight text-white">
-             AI slop, but it converts.
-           </h2>
-           <div className="pt-8 flex justify-center">
-              <button className="bg-white text-black text-xl px-10 py-5 rounded-full font-bold hover:scale-105 transition-transform flex items-center space-x-3 shadow-xl hover:shadow-2xl hover:shadow-white/20">
-                <PlayIcon />
-                <span>Watch Demo</span>
-              </button>
-           </div>
-         </div>
-       </section>
     </div>
   );
 };
@@ -455,7 +427,7 @@ const FeaturesSection = () => (
           Everything you need to create <span className="text-gradient">viral content</span>
         </h2>
         <p className="text-xl text-[var(--color-text-muted)] max-w-2xl mx-auto">
-          Professional tools and AI-powered features to transform your content strategy.
+          Stop overthinking it. Give the algorithm what it wants so you can get back to building.
         </p>
       </div>
 
