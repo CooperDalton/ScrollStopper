@@ -211,15 +211,16 @@ const HeroSection = () => (
                      {/* Main Headline */}
            <div className="space-y-6">
              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
-               <span className="text-gradient">AI-powered content</span>{" "}
-               <span className="text-[var(--color-text)]">that thinks like a</span>
-               <br />
-               <span className="text-[var(--color-text)]">content strategist</span>
+               <span className="text-gradient">AI Slop</span>{" "}
+               <span className="text-[var(--color-text)]">that makes you money</span>
              </h1>
              
              <div className="space-y-4">
                <p className="text-xl text-[var(--color-text-muted)] max-w-lg leading-relaxed">
-                 Transform your product screenshots into scroll-stopping videos with AI that understands viral content.
+                 Spend less time marketing and more time building.
+               </p>
+               <p className="text-lg text-[var(--color-text-muted)] max-w-lg">
+                 Built for founders who would rather ship than sell.
                </p>
              </div>
            </div>
@@ -273,6 +274,177 @@ const HeroSection = () => (
     </div>
   </section>
 );
+
+const CopyContent = () => {
+  // Shared styles for consistency
+  const sectionClass = "py-24 px-4 border-b border-[var(--color-border)] last:border-0";
+  const containerClass = "max-w-3xl mx-auto text-center space-y-12";
+  const headingClass = "text-3xl md:text-5xl font-bold leading-tight text-[var(--color-text)]";
+  const subHeadingClass = "text-xl md:text-2xl text-[var(--color-text-muted)] leading-relaxed";
+  
+  return (
+    <div className="bg-[var(--color-bg)]">
+      {/* THE PROBLEM */}
+      <section className={sectionClass}>
+        <div className={containerClass}>
+          <h2 className={headingClass}>
+            I built this because<br/>
+            <span className="text-[var(--color-text-muted)] opacity-60">“just post on TikTok every day”</span><br/>
+            is terrible advice if you’re a founder.
+          </h2>
+          
+          <div className="space-y-6">
+            <p className="text-lg font-medium text-[var(--color-primary)] uppercase tracking-wider">You’re already:</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-lg font-semibold text-[var(--color-text)]">
+              <div className="p-4 rounded-2xl bg-[var(--color-bg-secondary)]">building</div>
+              <div className="p-4 rounded-2xl bg-[var(--color-bg-secondary)]">fixing bugs</div>
+              <div className="p-4 rounded-2xl bg-[var(--color-bg-secondary)]">talking to users</div>
+              <div className="p-4 rounded-2xl bg-[var(--color-bg-secondary)]">trying not to burn out</div>
+            </div>
+          </div>
+
+          <p className="text-2xl font-bold text-[var(--color-text)] pt-4">
+            Marketing shouldn’t be another full-time job.
+          </p>
+        </div>
+      </section>
+
+      {/* THE PROMISE */}
+      <section className={`${sectionClass} bg-[var(--color-bg-secondary)]`}>
+        <div className={containerClass}>
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-[var(--color-primary)]">The Promise</h3>
+            <p className={headingClass}>
+              So this does one thing:
+            </p>
+          </div>
+          <p className={subHeadingClass}>
+            It turns your product into daily short-form content<br className="hidden md:block"/>
+            without you thinking about it.
+          </p>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section className={sectionClass}>
+        <div className={containerClass}>
+          <h3 className="text-lg font-medium text-[var(--color-primary)]">How It Works</h3>
+          
+          <div className="grid gap-8 md:grid-cols-3 text-left">
+            {[
+              { step: "01", text: "Upload screenshots." },
+              { step: "02", text: "Describe your product once." },
+              { step: "03", text: "AI generates content designed to get views." }
+            ].map((item, i) => (
+              <div key={i} className="p-8 rounded-3xl bg-[var(--color-bg-secondary)] hover:scale-105 transition-transform duration-300">
+                <div className="text-5xl font-bold text-[var(--color-primary)]/20 mb-4">{item.step}</div>
+                <p className="text-xl font-bold text-[var(--color-text)]">{item.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* THE TONE CHECK */}
+      <section className="py-24 px-4 bg-[var(--color-text)] text-[var(--color-bg)]">
+        <div className={containerClass}>
+          <h3 className="text-lg font-medium text-[var(--color-primary)]">The Vibe</h3>
+          
+          <div className="grid md:grid-cols-3 gap-12 text-center">
+            <div className="space-y-2">
+              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Is it art?</p>
+              <p className="text-3xl font-bold">No.</p>
+            </div>
+            
+            <div className="space-y-2">
+              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Is it vibe marketing?</p>
+              <p className="text-3xl font-bold text-[var(--color-primary)]">Absolutely.</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[var(--color-text-muted)] opacity-60 text-lg">Does the algorithm care?</p>
+              <p className="text-3xl font-bold">Also no.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* WHY THIS MATTERS */}
+      <section className={sectionClass}>
+        <div className={containerClass}>
+          <h2 className={headingClass}>
+            Most founders don’t lose because their product is bad.
+          </h2>
+          <p className={subHeadingClass}>
+            They lose because nobody sees it.
+          </p>
+          <div className="pt-8 flex flex-col md:flex-row justify-center gap-8 text-2xl font-bold">
+            <div className="flex items-center justify-center space-x-2 text-green-500 bg-green-500/10 px-6 py-3 rounded-full">
+              <span>Attention compounds</span>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+            </div>
+            <div className="flex items-center justify-center space-x-2 text-red-500 bg-red-500/10 px-6 py-3 rounded-full">
+              <span>Silence doesn’t</span>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" /></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* THE REAL PROBLEM THIS SOLVES */}
+      <section className={`${sectionClass} bg-[var(--color-bg-secondary)]`}>
+        <div className={containerClass}>
+          <p className="text-xl text-[var(--color-text-muted)]">This tool exists to solve exactly one problem:</p>
+          <h2 className="text-4xl md:text-6xl font-black text-[var(--color-text)] italic tracking-tight">
+            “I want eyeballs on my product.”
+          </h2>
+          <p className="text-xl font-bold text-[var(--color-text)]">That’s it.</p>
+        </div>
+      </section>
+
+      {/* WHO THIS IS FOR */}
+      <section className={sectionClass}>
+        <div className={containerClass}>
+          <h2 className={headingClass}>Who is this for?</h2>
+          
+          <div className="flex flex-col items-center space-y-6">
+            <p className="text-xl text-[var(--color-text-muted)]">If you prioritize:</p>
+            <div className="space-y-4 w-full max-w-md">
+              {[
+                "shipping more than posting",
+                "results more than aesthetics",
+                "leverage more than effort"
+              ].map((item, i) => (
+                <div key={i} className="flex items-center space-x-4 p-4 rounded-2xl border border-[var(--color-border)]">
+                  <div className="w-6 h-6 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-[var(--color-primary)]">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <span className="text-lg font-medium text-[var(--color-text)]">{item}</span>
+                </div>
+              ))}
+            </div>
+            <p className="pt-8 text-xl text-[var(--color-text-muted)]">You’ll probably like this.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* CLOSING CTA (User removed it, but adding a minimal one bridges the gap) */}
+      <section className="py-24 px-4 bg-[var(--color-text)] text-[var(--color-bg)] text-center">
+         <div className="max-w-3xl mx-auto space-y-8">
+           <h2 className="text-4xl md:text-6xl font-bold tracking-tight text-white">
+             AI slop, but it converts.
+           </h2>
+           <div className="pt-8 flex justify-center">
+              <button className="bg-white text-black text-xl px-10 py-5 rounded-full font-bold hover:scale-105 transition-transform flex items-center space-x-3 shadow-xl hover:shadow-2xl hover:shadow-white/20">
+                <PlayIcon />
+                <span>Watch Demo</span>
+              </button>
+           </div>
+         </div>
+       </section>
+    </div>
+  );
+};
 
 // Features Section
 const FeaturesSection = () => (
@@ -507,6 +679,7 @@ export default function Home() {
     <div className="min-h-screen bg-[var(--color-bg)]">
       <Header />
       <HeroSection />
+      <CopyContent />
       <FeaturesSection />
       <PricingSection />
     </div>
