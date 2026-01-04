@@ -1661,14 +1661,20 @@ export default function AIEditorWorkspace() {
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
             let finalJson = '';
+            
+            console.log('[AIEditor] Fetching billing status...');
             const billing = await fetch('/api/billing/status').then((r) => r.json());
+            console.log('[AIEditor] Billing status:', billing);
+            
             if (!billing.isSubscribed) {
+              console.error('[AIEditor] User not subscribed');
               toast.error('A paid subscription is required to generate slideshows.');
               setIsGenerating(false);
               setGenerationCompleted(true);
               return;
             }
             if (billing.remainingAIGenerations <= 0) {
+              console.error('[AIEditor] AI generation limit reached');
               toast.error('You have reached your AI generation limit for this month.');
               setIsGenerating(false);
               setGenerationCompleted(true);
@@ -1676,48 +1682,74 @@ export default function AIEditorWorkspace() {
             }
 
             const run = async () => {
+              console.log('[AIEditor] Starting generation with:', { 
+                productId, 
+                prompt, 
+                selectedImageIds, 
+                selectedCollectionIds, 
+                selectedPublicCollectionIds, 
+                aspectRatio: selectedAspectRatio 
+              });
+              
               const res = await fetch('/api/slideshows/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio: selectedAspectRatio }),
               });
+              
+              console.log('[AIEditor] API response status:', res.status, res.statusText);
+              
               if (!res.ok) {
                 // Try to parse JSON error response
                 try {
                   const errorData = await res.json();
+                  console.error('[AIEditor] API error response:', errorData);
                   if (errorData.error) {
-                    toast.error(errorData.error);
+                    toast.error(`Generation failed: ${errorData.error}`);
                     setIsGenerating(false);
+                    setGenerationCompleted(true);
                     return;
                   }
-                } catch {
-                  // Fall back to generic error
+                } catch (parseErr) {
+                  console.error('[AIEditor] Failed to parse error response:', parseErr);
                 }
-                // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error starting generation.');
+                console.error('[AIEditor] Server error starting generation. Status:', res.status);
+                toast.error(`Server error: ${res.status} ${res.statusText}`);
                 setIsGenerating(false);
-                setGenerationCompleted(true); // Hide AI thoughts on error
+                setGenerationCompleted(true);
                 return;
               }
               if (!res.body) {
-                // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Server error: No response body.');
+                console.error('[AIEditor] No response body received');
+                toast.error('Server error: No response body received');
                 setIsGenerating(false);
-                setGenerationCompleted(true); // Hide AI thoughts on error
+                setGenerationCompleted(true);
                 return;
               }
+              
+              console.log('[AIEditor] Starting to read response stream...');
               const reader = res.body.getReader();
               const decoder = new TextDecoder();
               let buffer = '';
+              let chunkCount = 0;
+              
               while (true) {
                 const { value, done } = await reader.read();
                 if (done) {
-                  // Generation is complete - auto-create slideshow from final JSON
+                  console.log('[AIEditor] Stream complete. Total chunks received:', chunkCount);
                   setIsGenerating(false);
-                  setGenerationCompleted(true); // Mark generation as completed to hide AI thoughts
+                  setGenerationCompleted(true);
                   if (finalJson) {
+                    console.log('[AIEditor] Final JSON received, creating slideshow');
                     handleGenerateFromJson(finalJson);
+                  } else {
+                    console.error('[AIEditor] Stream completed but no final JSON was received');
+                    toast.error('Generation completed but no slideshow data was received');
                   }
                   break;
                 }
+                
+                chunkCount++;
                 const chunkText = decoder.decode(value, { stream: true });
                 buffer += chunkText;
                 const parts = buffer.split('\n\n');
@@ -1734,30 +1766,43 @@ export default function AIEditorWorkspace() {
                     // setAiThoughts(prev => prev + data);
                   } else if (eventType === 'thoughtln') {
                     // setAiThoughts(prev => (prev ? prev + '\n' : '') + data);
+                    console.log('[AIEditor] Thought:', data);
+                    // Check for ERROR in thought stream
+                    if (data.includes('ERROR:')) {
+                      console.error('[AIEditor] Error in thought stream:', data);
+                      toast.error(data);
+                    }
                   } else if (eventType === 'json') {
                     try {
                       const obj = JSON.parse(data);
                       finalJson = JSON.stringify(obj, null, 2);
                       setSlideshowJson(finalJson);
-                    } catch {}
+                      console.log('[AIEditor] Received final JSON');
+                    } catch (err) {
+                      console.error('[AIEditor] Failed to parse final JSON:', err);
+                    }
                   } else if (eventType === 'json.partial') {
                     try {
                       const partial = JSON.parse(data);
                       setSlideshowJson(JSON.stringify(partial, null, 2));
-                    } catch {}
+                    } catch (err) {
+                      console.error('[AIEditor] Failed to parse partial JSON:', err);
+                    }
                   }
                 }
               }
             };
             run().catch((e) => {
+              console.error('[AIEditor] Error in run():', e);
+              toast.error(`Generation failed: ${(e as Error).message}`);
               setIsGenerating(false);
               setGenerationCompleted(true); // Hide AI thoughts on error
-              // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
             });
           } catch (e) {
+            console.error('[AIEditor] Top-level error:', e);
+            toast.error(`Generation failed: ${(e as Error).message}`);
             setIsGenerating(false);
             setGenerationCompleted(true); // Hide AI thoughts on error
-            // setAiThoughts(prev => (prev ? prev + '\n' : '') + 'Client error: ' + (e as Error).message);
           }
         }}
         onSelectImages={() => setIsSelectCollectionsOpen(true)}

@@ -50,8 +50,22 @@ const createSlideshowSchema = (collectionRefs: string[], productRefs: string[], 
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('[slideshow-generate] Request received');
+    
+    // Check for required API key first
+    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      console.error('[slideshow-generate] Missing GOOGLE_GENERATIVE_AI_API_KEY');
+      return new Response(JSON.stringify({ error: 'Missing GOOGLE_GENERATIVE_AI_API_KEY on server' }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    
     const { productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio } = await req.json()
+    console.log('[slideshow-generate] Request params:', { productId, prompt, selectedImageIds, selectedCollectionIds, selectedPublicCollectionIds, aspectRatio });
+    
     if (!productId || typeof productId !== 'string') {
+      console.error('[slideshow-generate] Missing or invalid productId');
       return new Response(JSON.stringify({ error: 'Missing productId' }), { 
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -60,6 +74,7 @@ export async function POST(req: NextRequest) {
     
     // Validate that at least one collection is selected (user or public)
     if ((!Array.isArray(selectedCollectionIds) || selectedCollectionIds.length === 0) && (!Array.isArray(selectedPublicCollectionIds) || selectedPublicCollectionIds.length === 0)) {
+      console.error('[slideshow-generate] No collections selected');
       return new Response(JSON.stringify({ 
         error: 'Please select at least one collection to generate a slideshow. Collection images are required for slide backgrounds.' 
       }), { 
@@ -70,15 +85,22 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-      status: 401,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    if (!user) {
+      console.error('[slideshow-generate] Unauthorized - no user');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    
+    console.log('[slideshow-generate] User authenticated:', user.id);
 
     // Increment usage counter (moved from client-side)
     try {
+      console.log('[slideshow-generate] Incrementing usage for user:', user.id);
       await incrementUsage(user.id, 'ai_generations', 1)
     } catch (err: any) {
+      console.error('[slideshow-generate] Failed to increment usage:', err);
       // Note: We're not blocking generation on usage increment failure/limit for now,
       // as the user requested "crash if null" logic is not strictly applicable here but 
       // we want to ensure robustness. If you want to ENFORCE limits, throw here.
@@ -86,6 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch product and classification fields
+    console.log('[slideshow-generate] Fetching product:', productId);
     const { data: product } = await supabase
       .from('products')
       .select('id, name, description, industry, product_type, matching_industries, matching_product_types')
@@ -93,10 +116,15 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
-    if (!product) return new Response(JSON.stringify({ error: 'Product not found' }), { 
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    if (!product) {
+      console.error('[slideshow-generate] Product not found:', productId);
+      return new Response(JSON.stringify({ error: 'Product not found' }), { 
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    
+    console.log('[slideshow-generate] Product found:', product.name);
 
     // Fetch product images context (ai_description + user_description)
     const { data: images } = await supabase
@@ -433,8 +461,11 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
+          console.log('[slideshow-generate] Starting stream generation');
+          
           // 1) Stream planning thoughts (no fallback)
           {
+            console.log('[slideshow-generate] Starting planning phase');
             const plan = await streamText({
               model: google("models/gemini-3-flash-preview"),
               messages: [
@@ -445,16 +476,20 @@ export async function POST(req: NextRequest) {
               stopWhen: stepCountIs(MAX_TOOL_ROUNDS),
             })
             const reader = plan.textStream.getReader()
+            let thoughtChunks = 0
             while (true) {
               const { value, done } = await reader.read()
               if (done) break
+              thoughtChunks++
               const chunk = typeof value === 'string' ? value : String(value)
               controller.enqueue(encoder.encode(`event: thought\n`))
               controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
             }
+            console.log('[slideshow-generate] Planning phase complete. Thought chunks:', thoughtChunks);
           }
 
           // 2) Generate final JSON strictly
+          console.log('[slideshow-generate] Starting JSON generation phase');
           const slideCount = typeof prompt === 'string' && prompt.match(/(\d+)\s*slide/i) ? parseInt(prompt.match(/(\d+)\s*slide/i)![1], 10) : 3
           
           const systemJson = `You are a TikTok/Instagram slideshow generator. Reply ONLY with valid JSON matching the exact schema.
@@ -542,7 +577,14 @@ Return ONLY the JSON object. No explanations, no markdown.`
           const collectionRefs = collectionImageItems.map(item => item.ref)
           const productRefs = productImageItems.map(item => item.ref)
           
+          console.log('[slideshow-generate] Schema refs:', { 
+            collectionRefs: collectionRefs.length, 
+            productRefs: productRefs.length,
+            slideCount
+          });
+          
           if (collectionRefs.length === 0) {
+            console.error('[slideshow-generate] No collection images available');
             controller.enqueue(encoder.encode(`event: thoughtln\n`))
             controller.enqueue(encoder.encode(`data: ERROR: No collection images available for backgrounds. Please select at least one collection.\n\n`))
             return
@@ -552,6 +594,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
           const SchemaWithHints = createSlideshowSchema(collectionRefs, productRefs, slideCount, CANVAS_WIDTH, CANVAS_MAX_HEIGHT)
 
           try {
+            console.log('[slideshow-generate] Calling generateObject with Google AI');
             // Try generateObject with explicit maxRetries
             const { object: finalObj, response, usage } = await generateObject({
               model: google("models/gemini-3-flash-preview"),
@@ -565,13 +608,18 @@ Return ONLY the JSON object. No explanations, no markdown.`
               maxRetries: 3,
             })
             
+            console.log('[slideshow-generate] generateObject completed successfully');
+            
             // Extensive validation and repair
             if (!finalObj || typeof finalObj !== 'object') {
+              console.error('[slideshow-generate] AI returned invalid object:', finalObj);
               throw new Error('AI returned invalid object')
             }
             
+            console.log('[slideshow-generate] Validating and repairing slideshow structure');
             // Ensure slides is an array
             if (!Array.isArray((finalObj as any).slides)) {
+              console.warn('[slideshow-generate] slides is not an array, attempting to fix');
               if (typeof (finalObj as any).slides === 'object' && (finalObj as any).slides !== null) {
                 ;(finalObj as any).slides = [(finalObj as any).slides]
               } else {
@@ -638,9 +686,11 @@ Return ONLY the JSON object. No explanations, no markdown.`
             })
             
             if (adjustmentCount > 0) {
+              console.log('[slideshow-generate] Adjusted', adjustmentCount, 'text positions to prevent offscreen text');
             }
             
             // Map prompt-local refs to UUIDs then to proxied URLs for client rendering
+            console.log('[slideshow-generate] Mapping refs to URLs');
             let mappedObj = finalObj
             try {
               const collectUUIDs = () => {
@@ -736,13 +786,18 @@ Return ONLY the JSON object. No explanations, no markdown.`
               }
             } catch (mapErr) {
               console.error('[slideshow-generate] Failed to map refs to URLs:', mapErr)
+              // Don't throw - continue with unmapped refs as fallback
             }
+            
+            console.log('[slideshow-generate] Slideshow generation complete, sending JSON to client');
+            
             try {
               await response
             } catch {}
             if (usage) {
               try {
                 const u = await usage
+                console.log('[slideshow-generate] Token usage:', u);
               } catch {}
             }
 
@@ -757,7 +812,13 @@ Return ONLY the JSON object. No explanations, no markdown.`
               console.error('[slideshow-generate] NoObjectGeneratedError: text=', e?.text)
               console.error('[slideshow-generate] NoObjectGeneratedError: response=', e?.response)
               console.error('[slideshow-generate] NoObjectGeneratedError: usage=', e?.usage)
+            } else {
+              console.error('[slideshow-generate] Error generating object:', err);
             }
+            
+            // Send error to client via stream
+            controller.enqueue(encoder.encode(`event: thoughtln\n`))
+            controller.enqueue(encoder.encode(`data: ERROR: ${(err as Error).message}\n\n`))
             throw err
           }
         } catch (e) {
