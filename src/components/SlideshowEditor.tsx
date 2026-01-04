@@ -346,7 +346,7 @@ export default function SlideshowEditor() {
   };
 
   // Reusable function to center a slide within the container
-  const centerSlide = (slideId: string, delay: number = 50) => {
+  const centerSlide = (slideId: string, delay: number = 0) => {
     setTimeout(() => {
       if (scrollContainerRef.current) {
         const slideElement = scrollContainerRef.current.querySelector(`[data-slide-id="${slideId}"]`) as HTMLElement;
@@ -1233,7 +1233,7 @@ export default function SlideshowEditor() {
     setSelectedSlideId(slideId);
     
     // Manually center the slide within the fixed container
-    centerSlide(slideId, 50);
+    centerSlide(slideId);
   };
 
   const handleAddSlide = async () => {
