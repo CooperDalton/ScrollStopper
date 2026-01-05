@@ -1,6 +1,6 @@
 # ScrollStopper
 
-**ScrollStopper** is an AI-powered SaaS platform designed to help indie hackers, founders, and creators generate high-converting, "scroll-stopping" slideshow videos for TikTok and Instagram.
+**ScrollStopper** is an AI-Powered SaaS platform designed to help indie hackers, founders, and creators generate high-converting, "scroll-stopping" slideshow videos for TikTok and Instagram.
 
 By combining product context with uploaded assets, ScrollStopper automates the creation of short-form video content—from scripting and design to hook generation—allowing users to produce viral-ready marketing assets in seconds.
 
