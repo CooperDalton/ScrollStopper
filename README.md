@@ -4,6 +4,12 @@
 
 By combining product context with uploaded assets, ScrollStopper automates the creation of short-form video content—from scripting and design to hook generation—allowing users to produce viral-ready marketing assets in seconds.
 
+## 🎥 Demo
+
+Watch the demo video to see ScrollStopper in action:
+
+[![ScrollStopper Demo](https://img.youtube.com/vi/AHRUUi-nzE8/maxresdefault.jpg)](https://www.youtube.com/watch?v=AHRUUi-nzE8)
+
 ## 🚀 Features
 
 ### 🤖 AI Automation

@@ -221,42 +221,41 @@ const HeroSection = () => (
               <span>TRY NOW</span>
               <SparklesIcon />
             </Link>
-            <button className="btn-outline text-lg px-8 py-4 flex items-center space-x-2">
+            <a 
+              href="https://www.youtube.com/watch?v=AHRUUi-nzE8" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="btn-outline text-lg px-8 py-4 flex items-center space-x-2 hover:scale-105 transition-transform"
+            >
               <PlayIcon />
               <span>Watch Demo</span>
-            </button>
+            </a>
           </div>
         </div>
 
         {/* Right Column - Visual Element */}
         <div className="relative">
-          <div className="relative w-full h-96 lg:h-[500px] bg-gradient-primary rounded-4xl overflow-hidden animate-gradient">
-            {/* Placeholder for future video/gif */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-white">
-                <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                  <PlayIcon />
-                </div>
-                <p className="text-lg font-medium opacity-90">
-                  Video Coming Soon
-                </p>
-                <p className="text-sm opacity-75">
-                  AI-powered content generation in action
-                </p>
-              </div>
-            </div>
+          <div className="relative w-full h-96 lg:h-[500px] bg-gradient-primary rounded-4xl overflow-hidden animate-gradient shadow-2xl">
+            {/* YouTube Video Embed */}
+            <iframe
+              className="absolute inset-0 w-full h-full"
+              src="https://www.youtube.com/embed/AHRUUi-nzE8?rel=0&modestbranding=1"
+              title="ScrollStopper Demo Video"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
             
             {/* Decorative elements */}
-            <div className="absolute top-8 left-8 w-12 h-12 bg-white/20 rounded-full animate-float"></div>
-            <div className="absolute bottom-8 right-8 w-8 h-8 bg-white/30 rounded-full animate-float" style={{animationDelay: '2s'}}></div>
-            <div className="absolute top-1/2 right-16 w-6 h-6 bg-white/25 rounded-full animate-float" style={{animationDelay: '4s'}}></div>
+            <div className="absolute top-8 left-8 w-12 h-12 bg-white/20 rounded-full animate-float pointer-events-none"></div>
+            <div className="absolute bottom-8 right-8 w-8 h-8 bg-white/30 rounded-full animate-float pointer-events-none" style={{animationDelay: '2s'}}></div>
+            <div className="absolute top-1/2 right-16 w-6 h-6 bg-white/25 rounded-full animate-float pointer-events-none" style={{animationDelay: '4s'}}></div>
           </div>
           
           {/* Floating elements around the main visual */}
-          <div className="absolute -top-4 -right-4 w-16 h-16 bg-white glass-card rounded-2xl flex items-center justify-center animate-float">
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-white glass-card rounded-2xl flex items-center justify-center animate-float shadow-lg">
             <SparklesIcon />
           </div>
-          <div className="absolute -bottom-4 -left-4 w-14 h-14 bg-white glass-card rounded-2xl flex items-center justify-center animate-float" style={{animationDelay: '1s'}}>
+          <div className="absolute -bottom-4 -left-4 w-14 h-14 bg-white glass-card rounded-2xl flex items-center justify-center animate-float shadow-lg" style={{animationDelay: '1s'}}>
             <ArrowRightIcon />
           </div>
         </div>
