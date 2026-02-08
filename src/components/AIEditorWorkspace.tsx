@@ -84,6 +84,12 @@ interface JSONSlideshow {
   slides: JSONSlide[];
 }
 
+interface GenerationStageUpdate {
+  key: string;
+  label: string;
+  progress: number;
+}
+
 export default function AIEditorWorkspace() {
   // Preload TikTok Sans so Fabric uses it immediately on canvas
   React.useEffect(() => {
@@ -265,6 +271,31 @@ export default function AIEditorWorkspace() {
   const [selectedAspectRatio, setSelectedAspectRatio] = React.useState<string>('9:16');
   const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
   const [generationCompleted, setGenerationCompleted] = React.useState<boolean>(false);
+  const [generationStage, setGenerationStage] = React.useState<GenerationStageUpdate>({
+    key: 'request',
+    label: 'Preparing generation',
+    progress: 5,
+  });
+  const [displayedGenerationProgress, setDisplayedGenerationProgress] = React.useState<number>(5);
+
+  React.useEffect(() => {
+    const target = Math.max(5, Math.min(100, generationStage.progress));
+    if (Math.abs(displayedGenerationProgress - target) < 0.1) return;
+
+    let rafId = 0;
+    const step = () => {
+      setDisplayedGenerationProgress((prev) => {
+        const delta = target - prev;
+        if (Math.abs(delta) < 0.1) return target;
+        // Move ~3.6% of the remaining distance per frame (~5x slower than before).
+        return prev + delta * 0.01;
+      });
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [generationStage.progress, displayedGenerationProgress]);
 
   // Load any persisted AI-generated slideshow draft on mount
   React.useEffect(() => {
@@ -1660,6 +1691,12 @@ export default function AIEditorWorkspace() {
             // setAiThoughts('');
             setIsGenerating(true);
             setGenerationCompleted(false); // Reset completion state when starting new generation
+            setGenerationStage({
+              key: 'request',
+              label: 'Preparing generation',
+              progress: 5,
+            });
+            setDisplayedGenerationProgress(5);
             let finalJson = '';
             
             console.log('[AIEditor] Fetching billing status...');
@@ -1740,9 +1777,19 @@ export default function AIEditorWorkspace() {
                   setIsGenerating(false);
                   setGenerationCompleted(true);
                   if (finalJson) {
+                    setGenerationStage({
+                      key: 'done',
+                      label: 'Slideshow ready',
+                      progress: 100,
+                    });
                     console.log('[AIEditor] Final JSON received, creating slideshow');
                     handleGenerateFromJson(finalJson);
                   } else {
+                    setGenerationStage({
+                      key: 'failed',
+                      label: 'Generation failed',
+                      progress: 100,
+                    });
                     console.error('[AIEditor] Stream completed but no final JSON was received');
                     toast.error('Generation completed but no slideshow data was received');
                   }
@@ -1769,8 +1816,25 @@ export default function AIEditorWorkspace() {
                     console.log('[AIEditor] Thought:', data);
                     // Check for ERROR in thought stream
                     if (data.includes('ERROR:')) {
+                      setGenerationStage({
+                        key: 'failed',
+                        label: 'Generation failed',
+                        progress: 100,
+                      });
                       console.error('[AIEditor] Error in thought stream:', data);
                       toast.error(data);
+                    }
+                  } else if (eventType === 'stage') {
+                    try {
+                      const next = JSON.parse(data) as GenerationStageUpdate;
+                      if (!next || typeof next !== 'object') continue;
+                      if (typeof next.key !== 'string' || typeof next.label !== 'string' || typeof next.progress !== 'number') continue;
+                      setGenerationStage(prev => {
+                        if (next.key === 'failed' || next.key === 'done') return next;
+                        return next.progress >= prev.progress ? next : prev;
+                      });
+                    } catch (err) {
+                      console.error('[AIEditor] Failed to parse stage event:', err);
                     }
                   } else if (eventType === 'json') {
                     try {
@@ -1797,12 +1861,22 @@ export default function AIEditorWorkspace() {
               toast.error(`Generation failed: ${(e as Error).message}`);
               setIsGenerating(false);
               setGenerationCompleted(true); // Hide AI thoughts on error
+              setGenerationStage({
+                key: 'failed',
+                label: 'Generation failed',
+                progress: 100,
+              });
             });
           } catch (e) {
             console.error('[AIEditor] Top-level error:', e);
             toast.error(`Generation failed: ${(e as Error).message}`);
             setIsGenerating(false);
             setGenerationCompleted(true); // Hide AI thoughts on error
+            setGenerationStage({
+              key: 'failed',
+              label: 'Generation failed',
+              progress: 100,
+            });
           }
         }}
         onSelectImages={() => setIsSelectCollectionsOpen(true)}
@@ -1889,11 +1963,18 @@ export default function AIEditorWorkspace() {
             
             {/* Loading Overlay */}
             {isGenerating && (
-              <div className="absolute inset-0 bg-gray-200 bg-opacity-50 flex items-center justify-center z-20">
-                <div className="flex space-x-2">
-                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-3 h-3 bg-gray-600 rounded-full animate-bounce"></div>
+              <div className="absolute inset-0 bg-white/65 backdrop-blur-[1px] flex items-center justify-center z-20">
+                <div className="w-[min(460px,92%)] bg-white border border-[var(--color-border)] rounded-xl shadow-sm p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-[var(--color-text)]">{generationStage.label}</p>
+                    <span className="text-xs text-[var(--color-text-muted)]">{Math.round(displayedGenerationProgress)}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--color-primary)]"
+                      style={{ width: `${Math.max(5, Math.min(100, displayedGenerationProgress))}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

@@ -460,12 +460,22 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const emitEvent = (eventType: string, data: string) => {
+          controller.enqueue(encoder.encode(`event: ${eventType}\n`))
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+        }
+        const emitStage = (key: string, label: string, progress: number) => {
+          emitEvent('stage', JSON.stringify({ key, label, progress }))
+        }
+
         try {
           console.log('[slideshow-generate] Starting stream generation');
+          emitStage('analyzing-inputs', 'Analyzing your inputs', 15)
           
           // 1) Stream planning thoughts (no fallback)
           {
             console.log('[slideshow-generate] Starting planning phase');
+            emitStage('planning', 'Planning slideshow structure', 30)
             const plan = await streamText({
               model: google("models/gemini-3-flash-preview"),
               messages: [
@@ -482,14 +492,15 @@ export async function POST(req: NextRequest) {
               if (done) break
               thoughtChunks++
               const chunk = typeof value === 'string' ? value : String(value)
-              controller.enqueue(encoder.encode(`event: thought\n`))
-              controller.enqueue(encoder.encode(`data: ${chunk}\n\n`))
+              emitEvent('thought', chunk)
             }
             console.log('[slideshow-generate] Planning phase complete. Thought chunks:', thoughtChunks);
+            emitStage('planning', 'Plan complete', 50)
           }
 
           // 2) Generate final JSON strictly
           console.log('[slideshow-generate] Starting JSON generation phase');
+          emitStage('generating-json', 'Generating slideshow content', 70)
           const slideCount = typeof prompt === 'string' && prompt.match(/(\d+)\s*slide/i) ? parseInt(prompt.match(/(\d+)\s*slide/i)![1], 10) : 3
           
           const systemJson = `You are a TikTok/Instagram slideshow generator. Reply ONLY with valid JSON matching the exact schema.
@@ -585,8 +596,8 @@ Return ONLY the JSON object. No explanations, no markdown.`
           
           if (collectionRefs.length === 0) {
             console.error('[slideshow-generate] No collection images available');
-            controller.enqueue(encoder.encode(`event: thoughtln\n`))
-            controller.enqueue(encoder.encode(`data: ERROR: No collection images available for backgrounds. Please select at least one collection.\n\n`))
+            emitStage('failed', 'Missing collection images', 100)
+            emitEvent('thoughtln', 'ERROR: No collection images available for backgrounds. Please select at least one collection.')
             return
           }
           
@@ -609,6 +620,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
             })
             
             console.log('[slideshow-generate] generateObject completed successfully');
+            emitStage('validating-output', 'Validating generated slides', 82)
             
             // Extensive validation and repair
             if (!finalObj || typeof finalObj !== 'object') {
@@ -691,6 +703,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
             
             // Map prompt-local refs to UUIDs then to proxied URLs for client rendering
             console.log('[slideshow-generate] Mapping refs to URLs');
+            emitStage('mapping-assets', 'Mapping images and assets', 92)
             let mappedObj = finalObj
             try {
               const collectUUIDs = () => {
@@ -790,6 +803,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
             }
             
             console.log('[slideshow-generate] Slideshow generation complete, sending JSON to client');
+            emitStage('finalizing', 'Finalizing slideshow', 98)
             
             try {
               await response
@@ -801,10 +815,9 @@ Return ONLY the JSON object. No explanations, no markdown.`
               } catch {}
             }
 
-            controller.enqueue(encoder.encode(`event: thoughtln\n`))
-            controller.enqueue(encoder.encode(`data: --- JSON READY ---\n\n`))
-            controller.enqueue(encoder.encode(`event: json\n`))
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(mappedObj)}\n\n`))
+            emitEvent('thoughtln', '--- JSON READY ---')
+            emitEvent('json', JSON.stringify(mappedObj))
+            emitStage('done', 'Slideshow ready', 100)
           } catch (err) {
             if ((NoObjectGeneratedError as any).isInstance?.(err)) {
               const e: any = err
@@ -817,14 +830,14 @@ Return ONLY the JSON object. No explanations, no markdown.`
             }
             
             // Send error to client via stream
-            controller.enqueue(encoder.encode(`event: thoughtln\n`))
-            controller.enqueue(encoder.encode(`data: ERROR: ${(err as Error).message}\n\n`))
+            emitStage('failed', 'Generation failed', 100)
+            emitEvent('thoughtln', `ERROR: ${(err as Error).message}`)
             throw err
           }
         } catch (e) {
           console.error('[slideshow-generate] Error in stream:', e)
-          controller.enqueue(encoder.encode(`event: thoughtln\n`))
-          controller.enqueue(encoder.encode(`data: ERROR: ${(e as Error).message}\n\n`))
+          emitStage('failed', 'Generation failed', 100)
+          emitEvent('thoughtln', `ERROR: ${(e as Error).message}`)
         } finally {
           controller.close()
         }
@@ -846,5 +859,3 @@ Return ONLY the JSON object. No explanations, no markdown.`
     })
   }
 }
-
-
