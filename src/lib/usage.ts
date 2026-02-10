@@ -22,7 +22,7 @@ export async function getSubscriptionPeriod(service: ReturnType<typeof createSer
     return null;
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-12-15.clover' });
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-01-28.clover' });
 
   // Prefer active subscription; fallback to trialing
   const tryStatuses: Stripe.Subscription.Status[] = ['active', 'trialing'];

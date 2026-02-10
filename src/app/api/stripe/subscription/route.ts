@@ -42,7 +42,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2025-12-15.clover',
+      apiVersion: '2026-01-28.clover',
     });
 
     // Prefer an active/trialing/past_due subscription; else report last canceled if present.
@@ -142,4 +142,3 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
-

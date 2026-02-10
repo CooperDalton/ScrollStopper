@@ -4,17 +4,17 @@ import { useEffect, useState } from 'react';
 import { toastPromise } from '@/lib/toast';
 
 interface CancelSubscriptionCardProps {
-  initialIsSubscribed: boolean;
-  initialCancelAtPeriodEnd: boolean;
-  initialCurrentPeriodEnd: string | null;
-  initialStatus: string | null;
+  initialIsSubscribed?: boolean;
+  initialCancelAtPeriodEnd?: boolean;
+  initialCurrentPeriodEnd?: string | null;
+  initialStatus?: string | null;
 }
 
 export default function CancelSubscriptionCard({
-  initialIsSubscribed,
-  initialCancelAtPeriodEnd,
-  initialCurrentPeriodEnd,
-  initialStatus,
+  initialIsSubscribed = false,
+  initialCancelAtPeriodEnd = false,
+  initialCurrentPeriodEnd = null,
+  initialStatus = null,
 }: CancelSubscriptionCardProps) {
   const [loading, setLoading] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(initialIsSubscribed);
